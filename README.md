@@ -1,112 +1,119 @@
 # AirPlay Xbox
 
-AirPlay-Empfänger als UWP-App für die **Xbox Series X** (Developer Mode). iPhone, iPad und Mac können über
-*Kontrollzentrum → Bildschirmsynchronisierung* Bild und Ton auf die Xbox spiegeln. Reines Audio-AirPlay (Musik) geht ebenfalls,
-außerdem **AirPlay-Video** („Wiedergabe auf Xbox Series X“ in Apps wie YouTube oder Twitch).
+[Deutsche Version](README.de.md)
 
-**Stand: läuft auf der Xbox Series X (Developer Mode).** Getestet mit einem iPhone; Details unter „Teststand“.
+An AirPlay receiver for the **Xbox Series X**, built as a UWP app that runs in Developer Mode. iPhone, iPad and Mac can mirror their
+screen and audio to the Xbox via *Control Center → Screen Mirroring*. Audio-only AirPlay (music) works as well, and so does
+**AirPlay video** (the AirPlay button in apps such as YouTube or Twitch).
 
-## Aufbau
+**Status: runs on the Xbox Series X (Developer Mode).** Tested with an iPhone; see “Test status” for details.
 
-| Baustein | Umsetzung |
+> **Note:** The app's on-screen text (status screen, error messages) is currently in German only.
+
+## Architecture
+
+| Component | Implementation |
 |---|---|
-| AirPlay-Protokoll (RTSP/HTTP, Pairing, FairPlay, Entschlüsselung, NTP-Timing) | [UxPlay](https://github.com/FDH2/UxPlay)-`lib/` (GPL-3.0) in `third_party/uxplay-lib`, für UWP angepasst |
-| Bonjour/mDNS-Ankündigung | UxPlays eingebauter `mdnsd`-Responder (kein Bonjour nötig) |
-| plist-Parsing | [libplist](https://github.com/libimobiledevice/libplist) (LGPL-2.1) in `third_party/libplist` |
-| Windows-Lücken zu POSIX | `third_party/compat/` (pthread-Ersatz, `ssize_t`, …) |
-| Video | FFmpeg H.264, bevorzugt D3D11VA-Hardwaredecoder, sonst Software; Ausgabe über den D3D11-Video-Processor (Letterbox) |
-| Audio | FFmpeg (AAC-ELD, AAC-LC, ALAC) → XAudio2; Bild und Ton werden über die Sender-Zeitstempel synchron ausgegeben (200 ms Puffer) |
-| AirPlay-Video (HLS/URL) | UxPlays HLS-Teil (`/play`, FCUP-Playlists vom iPhone) → Windows-`MediaPlayer` mit `AdaptiveMediaSource`; Bilder per Frame-Server in die Swapchain |
-| UI | UWP ohne XAML: `CoreApplication` + D3D11-Swapchain; Direct2D-Statusbildschirm |
+| AirPlay protocol (RTSP/HTTP, pairing, FairPlay, decryption, NTP timing) | [UxPlay](https://github.com/FDH2/UxPlay) `lib/` (GPL-3.0) in `third_party/uxplay-lib`, adapted for UWP |
+| Bonjour/mDNS advertisement | UxPlay's built-in `mdnsd` responder (no Bonjour needed) |
+| plist parsing | [libplist](https://github.com/libimobiledevice/libplist) (LGPL-2.1) in `third_party/libplist` |
+| POSIX gaps on Windows | `third_party/compat/` (pthread replacement, `ssize_t`, …) |
+| Video | FFmpeg H.264, preferring the D3D11VA hardware decoder with a software fallback; output through the D3D11 video processor (letterboxed) |
+| Audio | FFmpeg (AAC-ELD, AAC-LC, ALAC) → XAudio2; picture and sound are kept in sync using the sender's timestamps (200 ms buffer) |
+| AirPlay video (HLS/URL) | UxPlay's HLS part (`/play`, FCUP playlists from the iPhone) → Windows `MediaPlayer` with `AdaptiveMediaSource`; frames go into the swap chain via frame server mode |
+| UI | UWP without XAML: `CoreApplication` + D3D11 swap chain; Direct2D status screen |
 
-Quellcode der App: `src/` (`AirPlayServer`, `VideoPipeline`, `AudioPipeline`, `HlsPlayer`, `Renderer`, `main.cpp`).
+App source code: `src/` (`AirPlayServer`, `VideoPipeline`, `AudioPipeline`, `HlsPlayer`, `Renderer`, `main.cpp`).
 
-## Bauen (Windows)
+## Building (Windows)
 
-Voraussetzungen: Visual Studio 2026 **Build Tools** (C++-Workload, Windows 11 SDK 10.0.26100), Git.
+Requirements: Visual Studio 2026 **Build Tools** (C++ workload, Windows 11 SDK 10.0.26100), Git.
 
 ```bat
 git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
 vcpkg\bootstrap-vcpkg.bat -disableMetrics
 set VCPKG_ROOT=%CD%\vcpkg
-vcpkg\vcpkg.exe install --triplet x64-uwp --host-triplet x64-windows   :: OpenSSL + FFmpeg, ca. 10 Min
+vcpkg\vcpkg.exe install --triplet x64-uwp --host-triplet x64-windows   :: OpenSSL + FFmpeg, about 10 min
 tools\build.bat                                                      :: CMake + Ninja -> build\AirPlayXbox.exe
-python -I tools\make_assets.py package\Assets                         :: nur nötig, wenn die Icons fehlen
+python -I tools\make_assets.py package\Assets                         :: only needed if the icons are missing
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\package.ps1 :: -> build\AirPlayXbox.msix + build\AirPlayXboxDev.cer
 ```
 
-`package.ps1` legt beim ersten Lauf ein Entwicklerzertifikat `AirPlayXboxDev.pfx` im Projektordner an (nicht einchecken) und kopiert
-die C++-Laufzeit (`*_app.dll`) aus dem auf dem PC installierten `Microsoft.VCLibs.140.00` app-lokal ins Paket.
+On its first run, `package.ps1` creates a developer certificate `AirPlayXboxDev.pfx` in the project folder (do not commit it) and
+copies the C++ runtime (`*_app.dll`) from the `Microsoft.VCLibs.140.00` package installed on the PC into the app package.
 
-Pfade zu Visual Studio (`tools/build.bat`) und zum Windows SDK (`tools/package.ps1`) sind fest eingetragen; bei anderer Installation
-dort anpassen. Getestet mit vcpkg-Commit `e456309` (FFmpeg 9.0.2, OpenSSL 3.6.5).
+The paths to Visual Studio (`tools/build.bat`) and the Windows SDK (`tools/package.ps1`) are hard-coded; adjust them if your
+installation differs. Tested with vcpkg commit `e456309` (FFmpeg 9.0.2, OpenSSL 3.6.5).
 
-**Signaturschlüssel:** Wer das Repository frisch klont, bekommt beim ersten `package.ps1` einen eigenen Schlüssel. Updates einer schon
-installierten App gehen nur mit demselben Schlüssel, deshalb `AirPlayXboxDev.pfx` sichern. Mit einem neuen Schlüssel muss die alte
-App zuerst deinstalliert werden (dabei gehen ihre Einstellungen verloren).
+**Signing key:** A fresh clone gets its own key on the first `package.ps1` run. An installed app can only be updated with the same key,
+so back up `AirPlayXboxDev.pfx`. With a new key, the old app has to be uninstalled first, and its settings are lost.
 
-## Auf die Xbox bringen
+## Installing on the Xbox
 
-1. **Entwicklerkonto anlegen (vor Schritt 2, Aktivierungscodes laufen ab):** über <https://storedeveloper.microsoft.com> →
-   „Get started for free“ → **Individual developer**. Für Privatpersonen kostenlos (seit 2025), dafür Identitätsprüfung mit Ausweis und
-   Selfie. Andere Einstiege (direkt über Partner Center oder Xbox) führen in den alten, kostenpflichtigen Ablauf.
-2. **Developer Mode aktivieren:** Auf der Xbox im Store die App **Xbox Dev Mode** installieren und starten, den angezeigten Code unter
-   <https://partner.microsoft.com/xboxconfig/devices> (Kurzlink `aka.ms/activatexbox`) eingeben → „Agree and activate“. Danach in der App
-   **Switch and restart**. Mindestens 5 GB Entwicklerspeicher einplanen. Wer am Xbox-Insider-Programm (Update Preview) teilnimmt, verlässt
-   es vorher (sonst Fehler E208). Achtung: Der Moduswechsel löscht Quick-Resume-Stände und lokale Aufnahmen.
-3. In **Dev Home** unter *Remote Access Settings* das **Xbox Device Portal** einschalten (Benutzername/Passwort empfohlen). Die Adresse
-   (`https://<Xbox-IP>:11443`) steht dort. Im PC-Browser öffnen, Zertifikatswarnung bestätigen.
-4. Im Device Portal unter **My games & apps → Add** `build\AirPlayXbox.msix` hochladen. Abhängigkeiten sind keine nötig (C++-Laufzeit
-   liegt im Paket). Falls nach einem Zertifikat gefragt wird, `build\AirPlayXboxDev.cer` angeben. Installieren.
-5. Empfohlen: In Dev Home die App markieren → Ansicht-Taste → *View details* → **App type: Game**. Spiele bekommen deutlich mehr
-   Arbeitsspeicher und GPU-Anteil als Apps.
-6. App „AirPlay Xbox“ in Dev Home starten. Auf dem Bildschirm erscheint der Gerätename.
-7. Auf iPhone/Mac: *Kontrollzentrum → Bildschirmsynchronisierung* (Mac: Menüleiste → Kontrollzentrum) → „Xbox Series X“ wählen.
+1. **Create a developer account (before step 2, because activation codes expire):** go to <https://storedeveloper.microsoft.com> →
+   “Get started for free” → **Individual developer**. Free for individuals since 2025; requires identity verification with a
+   government ID and a selfie. Other entry points (directly through Partner Center or the Xbox) lead to the old, paid sign-up flow.
+2. **Activate Developer Mode:** On the Xbox, install and open the **Xbox Dev Mode** app from the Store. Enter the code it shows at
+   <https://partner.microsoft.com/xboxconfig/devices> (short link `aka.ms/activatexbox`) → “Agree and activate”. Then choose
+   **Switch and restart** in the app. Plan for at least 5 GB of developer storage. If you are in the Xbox Insider program (Update
+   Preview), leave it first, otherwise you get error E208. Warning: switching modes deletes Quick Resume states and local captures.
+3. In **Dev Home**, under *Remote Access Settings*, enable the **Xbox Device Portal** (a username and password are recommended). The
+   address (`https://<Xbox-IP>:11443`) is shown there. Open it in a browser on your PC and accept the certificate warning.
+4. In the Device Portal, under **My games & apps → Add**, upload `build\AirPlayXbox.msix`. No dependencies are needed (the C++ runtime
+   is inside the package). If you are asked for a certificate, provide `build\AirPlayXboxDev.cer`. Install.
+5. Recommended: in Dev Home, highlight the app → View button → *View details* → **App type: Game**. Games get considerably more memory
+   and GPU share than apps.
+6. Start “AirPlay Xbox” from Dev Home. The device name appears on screen.
+7. On the iPhone/Mac: *Control Center → Screen Mirroring* (Mac: menu bar → Control Center) → choose “Xbox Series X”.
 
-Zurück zum normalen Modus (Spiele, Store-Apps): **Dev Home → Quick Actions → Leave Dev Mode**. Wieder in den Entwicklermodus: App
-*Xbox Dev Mode* → *Switch and restart*. Die AirPlay-App bleibt installiert, läuft aber nur im Entwicklermodus.
+Back to normal mode (games, Store apps): **Dev Home → Quick Actions → Leave Dev Mode**. To return to Developer Mode: *Xbox Dev Mode*
+app → *Switch and restart*. The AirPlay app stays installed but only runs in Developer Mode.
 
-Wichtig: iPhone/Mac und Xbox müssen im **selben Netzwerk/VLAN** sein, und das WLAN darf Multicast/Bonjour nicht blockieren (keine „Client-Isolation“).
+Important: the iPhone/Mac and the Xbox must be on the **same network/VLAN**, and the Wi-Fi must not block multicast/Bonjour (no
+“client isolation”).
 
-## Bedienung und Dateien
+## Usage and files
 
-- **Controller-Taste B** trennt alle Verbindungen.
-- **Lautstärke:** Die App merkt sich die zuletzt am iPhone/Mac eingestellte Lautstärke (LocalSettings `VolumeDb`) und meldet sie beim Verbinden als `initialVolume`, sodass der Sender dort weitermacht. Ohne gespeicherten Wert startet sie bei halber Lautstärke (−15 dB), „Stumm“ wird nicht übernommen.
-- Der Gerätename lässt sich ändern: Datei `name.txt` (eine Zeile, UTF-8) in den `LocalState`-Ordner der App legen (Device Portal →
-  *File explorer* → `LocalAppData` → `AirPlayXbox.Receiver_…` → `LocalState`). Neustart der App nötig.
-- **Logdatei:** `LocalState\airplay.log` im selben Ordner. Sie enthält auch die Protokollmeldungen von UxPlay. Bei Problemen bitte mitschicken.
-- Der Pairing-Schlüssel liegt in `LocalState\airplay_key.pem`. Löschen = neue Geräte-Identität (Geräte müssen sich neu koppeln).
+- **Controller button B** disconnects all clients.
+- **Volume:** The app remembers the volume last set on the iPhone/Mac (LocalSettings `VolumeDb`) and reports it as `initialVolume` when
+  a device connects, so the sender continues at that level. Without a saved value it starts at half volume (−15 dB); “mute” is not
+  carried over.
+- The device name can be changed: put a file `name.txt` (one line, UTF-8) into the app's `LocalState` folder (Device Portal →
+  *File explorer* → `LocalAppData` → `AirPlayXbox.Receiver_…` → `LocalState`). Restart the app afterwards.
+- **Log file:** `LocalState\airplay.log` in the same folder. It also contains UxPlay's protocol messages. Please attach it when
+  reporting problems.
+- The pairing key is stored in `LocalState\airplay_key.pem`. Deleting it gives the receiver a new identity (devices have to pair again).
 
-## Bekannte Grenzen
+## Known limitations
 
-- **DRM-Inhalte** (Netflix, Apple TV+, Disney+ …) bleiben beim Spiegeln schwarz. Das erzwingt Apple.
-- **AirPlay-Video:** Das iPhone übergibt nur die Video-Adresse, die Xbox lädt das Video selbst aus dem Internet. Gesteuert wird am iPhone
-  (Pause, Spulen, Beenden). UxPlay hat diesen Weg vor allem mit YouTube erprobt; andere Apps (Twitch, TikTok …) können abweichen.
-  Geschützte Inhalte (FairPlay-DRM, `fp-setup2`) lassen sich nicht abspielen.
-- Eine App im Dev Mode läuft nur, solange die Xbox im Developer Mode ist. Für Spiele/Store muss in den Retail-Modus zurückgewechselt werden.
-- Latenz beim Spiegeln ca. 200–300 ms (bewusster Puffer für gleichmäßigen Ton und lippensynchrones Bild).
-- Lizenz: wegen UxPlay ist das Projekt insgesamt **GPL-3.0**.
+- **DRM content** (Netflix, Apple TV+, Disney+ …) stays black when mirroring. Apple enforces this.
+- **AirPlay video:** The iPhone only hands over the video URL; the Xbox downloads the video from the internet itself. Playback is
+  controlled from the iPhone (pause, seek, stop). UxPlay mainly tested this path with YouTube; other apps (Twitch, TikTok …) may behave
+  differently. Protected content (FairPlay DRM, `fp-setup2`) cannot be played.
+- A Developer Mode app only runs while the Xbox is in Developer Mode. For games and Store apps you have to switch back to Retail Mode.
+- Mirroring latency is about 200–300 ms (a deliberate buffer for smooth audio and lip-synced video).
+- License: because of UxPlay, the project as a whole is **GPL-3.0**.
 
-## Teststand
+## Test status
 
-- **Xbox Series X (Developer Mode):** App per Device Portal installiert; Erkennung im iPhone-Kontrollzentrum (mDNS), Spiegelung mit Bild
-  und Ton laufen. Die app-lokale C++-Laufzeit (VCLibs 14.0.33519) reicht.
-- **Windows-11-PC** (Entwicklermodus, `Add-AppxPackage -Register build\layout\AppxManifest.xml`): Spiegelung, AirPlay-Video aus Safari und
-  Twitch, Weiterschauen ab gespeicherter Position, Pausieren/Fortsetzen der App.
-- **Bekannt nicht möglich:** TikTok schickt beim AirPlay-Symbol keine Video-Anfrage, nur die Spiegelung läuft weiter.
-- **Noch offen:** der YouTube-Weg (Playlists vom iPhone, `raop_hls_export_playlists`) und das MacBook.
+- **Xbox Series X (Developer Mode):** app installed via the Device Portal; discovery in the iPhone's Control Center (mDNS) and mirroring
+  with picture and sound work. The bundled C++ runtime (VCLibs 14.0.33519) is sufficient.
+- **Windows 11 PC** (Developer Mode, `Add-AppxPackage -Register build\layout\AppxManifest.xml`): mirroring, AirPlay video from Safari
+  and Twitch, resuming from a saved position, suspending/resuming the app.
+- **Known not to work:** TikTok sends no video request when its AirPlay button is used; only mirroring keeps running.
+- **Not yet tested:** the YouTube path (playlists from the iPhone, `raop_hls_export_playlists`) and the MacBook.
 
-Beim Portieren der UxPlay-Bibliothek waren vier Windows-spezifische Fehler zu beheben, im Quelltext mit „UWP-Anpassung“ markiert:
-nicht initialisierter Mutex in `httpd.c`, `unsigned` Paketlänge in `raop_rtp.c` (`recv` liefert unter Windows oft -1), ein falscher
-`recvfrom`-Aufruf in `raop_ntp.c` und `mdnsd_stop` in `mdnsd.c`, das Sockets schloss, während der mDNS-Thread sie noch benutzte. UWP prüft
-Handles strikt, das führte beim Pausieren der App (Minimieren, Xbox-Home-Taste) zum Absturz mit `0xC0000008`.
+Porting the UxPlay library required fixing four Windows-specific bugs, marked “UWP-Anpassung” (“UWP adaptation”) in the source:
+an uninitialized mutex in `httpd.c`, an `unsigned` packet length in `raop_rtp.c` (`recv` often returns -1 on Windows), a wrong
+`recvfrom` call in `raop_ntp.c`, and `mdnsd_stop` in `mdnsd.c`, which closed sockets while the mDNS thread was still using them.
+UWP checks handles strictly, so this crashed the app with `0xC0000008` when it was suspended (minimized, Xbox Home button).
 
-Fällt der D3D11VA-Hardwaredecoder aus, schaltet die App automatisch auf den Software-Decoder (steht im Log).
+If the D3D11VA hardware decoder fails, the app automatically falls back to the software decoder (noted in the log).
 
-## Lizenz und Hinweise
+## License and notices
 
-GPL-3.0, siehe [`LICENSE`](LICENSE). Fremdcode, Versionen und Lizenzen: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+GPL-3.0, see [`LICENSE`](LICENSE). Third-party code, versions and licenses: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-AirPlay, iPhone, iPad und Mac sind Marken von Apple Inc., Xbox ist eine Marke der Microsoft Corporation. Privates Hobbyprojekt ohne
-Verbindung zu Apple oder Microsoft. Die FairPlay-Kompatibilität stammt aus dem Open-Source-Projekt UxPlay; die App ist für den
-privaten Gebrauch im Developer Mode gedacht und nicht für den Vertrieb über einen Store.
+AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc.; Xbox is a trademark of Microsoft Corporation. This is a private hobby
+project with no affiliation to Apple or Microsoft. FairPlay compatibility comes from the open-source project UxPlay; the app is meant
+for private use in Developer Mode, not for distribution through a store.
