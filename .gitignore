@@ -1,0 +1,18 @@
+# Abhängigkeiten (werden per vcpkg geholt)
+vcpkg/
+vcpkg_installed/
+
+# Build-Ausgabe
+build/
+
+# Signaturschlüssel und Pakete - niemals einchecken
+*.pfx
+*.cer
+*.msix
+*.appx
+
+# Logs und Editor-Reste
+*.log
+.vs/
+.vscode/
+*.user

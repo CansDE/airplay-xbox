@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap mp">
+
+  <Identity Name="AirPlayXbox.Receiver" Publisher="CN=AirPlayXboxDev" Version="0.1.0.0" ProcessorArchitecture="x64" />
+
+  <mp:PhoneIdentity PhoneProductId="6f3c1f0e-5a1d-4e0a-9d52-1b7d0a8c4e21" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+
+  <Properties>
+    <DisplayName>AirPlay Xbox</DisplayName>
+    <PublisherDisplayName>AirPlay Xbox Dev</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="de-de" />
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="AirPlayXbox.exe" EntryPoint="AirPlayXbox.App">
+      <uap:VisualElements
+        DisplayName="AirPlay Xbox"
+        Description="AirPlay-Empfänger: Bildschirm und Ton von iPhone und Mac auf der Xbox anzeigen"
+        BackgroundColor="#0A0D17"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#0A0D17" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+  </Capabilities>
+</Package>

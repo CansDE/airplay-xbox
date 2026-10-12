@@ -1,0 +1,12 @@
+{
+  "name": "airplay-xbox",
+  "version": "0.1.0",
+  "dependencies": [
+    "openssl",
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": ["avcodec", "swresample"]
+    }
+  ]
+}
