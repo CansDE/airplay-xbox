@@ -1,7 +1,7 @@
-"""Erzeugt die Paket-Icons (reines Python, ohne Zusatzbibliotheken).
+"""Generates the package icons (pure Python, no extra libraries).
 
-Motiv: dunkler Hintergrund, blauer Bildschirm-Umriss mit AirPlay-typischem Dreieck.
-Aufruf: python -I tools/make_assets.py package/Assets
+Design: dark background, blue screen outline with the AirPlay-style triangle.
+Usage: python -I tools/make_assets.py package/Assets
 """
 import struct
 import sys
@@ -35,10 +35,10 @@ def make_pixel(w, h):
     s = min(w, h)
 
     def px(x, y):
-        # Koordinaten relativ zur Bildmitte, normiert auf [-1, 1] bezogen auf die kleinere Kante
+        # Coordinates relative to the image center, normalized to [-1, 1] based on the shorter edge
         u = (x - w / 2) / (s / 2)
         v = (y - h / 2) / (s / 2)
-        # Bildschirm-Umriss (abgerundetes Rechteck, nur Rand)
+        # Screen outline (rounded rectangle, border only)
         bw, bh, t = 0.78, 0.50, 0.07
         cy = -0.12
         dx, dy = abs(u) - bw, abs(v - cy) - bh
@@ -46,7 +46,7 @@ def make_pixel(w, h):
         inner = abs(u) <= bw - t and abs(v - cy) <= bh - t
         if outer and not inner:
             return (*BLUE, 255)
-        # AirPlay-Dreieck unter dem Bildschirm
+        # AirPlay triangle below the screen
         ty0, ty1 = 0.38, 0.72
         if ty0 <= v <= ty1:
             half = (v - ty0) / (ty1 - ty0) * 0.30
@@ -69,7 +69,7 @@ def main(out):
     }
     for name, (w, h) in sizes.items():
         png(out / name, w, h, make_pixel(w, h))
-        print("geschrieben:", out / name)
+        print("written:", out / name)
 
 
 if __name__ == "__main__":

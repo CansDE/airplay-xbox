@@ -1,5 +1,5 @@
 @echo off
-rem Baut die App fuer x64-UWP (Xbox). Aufruf: tools\build.bat [configure|build]
+rem Builds the app for x64 UWP (Xbox). Usage: tools\build.bat [configure|build]
 setlocal
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64 uwp 10.0.26100.0 || exit /b 1
 set "CMAKE_DIR=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake"

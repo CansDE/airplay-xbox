@@ -405,13 +405,13 @@ static uint64_t rtp_time_to_client_ntp(raop_rtp_t *raop_rtp,  uint32_t rtp32) {
     }
 }
 
-static int g_audio_dcount = 0;  /* Diagnose */
+static int g_audio_dcount = 0;  /* UWP adaptation: diagnostics (packet counter for the log) */
 static THREAD_RETVAL
 raop_rtp_thread_udp(void *arg)
 {
     raop_rtp_t *raop_rtp = arg;
     unsigned char packet[RAOP_PACKET_LEN];
-    int packetlen = 0;  /* UWP-Anpassung: war unsigned; recv liefert unter Windows oft -1 (WSAECONNRESET) */
+    int packetlen = 0;  /* UWP adaptation: was unsigned; recv often returns -1 on Windows (WSAECONNRESET) */
     struct sockaddr_storage saddr = {0};
     socklen_t saddrlen = 0;
     bool got_remote_control_saddr = false;
@@ -494,7 +494,7 @@ raop_rtp_thread_udp(void *arg)
                                                           NULL, NULL, &recv_time_kernel, &recv_time_clock);
             }
 
-            if (packetlen <= 0) continue;  /* UWP-Anpassung: Fehler/leeres Paket nicht auswerten */
+            if (packetlen <= 0) continue;  /* UWP adaptation: do not process errors/empty packets */
             int type_c = packet[1] & ~0x80;
             logger_log(raop_rtp->logger, LOGGER_DEBUG, "\nraop_rtp type_c 0x%02x, packetlen = %d", type_c, packetlen);
 
@@ -606,7 +606,7 @@ raop_rtp_thread_udp(void *arg)
             saddrlen = sizeof(saddr);
             packetlen = kernel_timestamp_session_recv(raop_rtp->rtp_session_dsock, (char *) packet, sizeof(packet),
                                                       NULL, NULL, &recv_time_kernel, &recv_time_clock);
-            if (packetlen < 0) { if (g_audio_dcount < 20) logger_log(raop_rtp->logger, LOGGER_INFO, "raop_rtp data recv error %d", SOCKET_GET_ERROR()); continue; }  /* UWP-Anpassung */
+            if (packetlen < 0) { if (g_audio_dcount < 20) logger_log(raop_rtp->logger, LOGGER_INFO, "raop_rtp data recv error %d", SOCKET_GET_ERROR()); continue; }  /* UWP adaptation */
             ++g_audio_dcount;
             if (g_audio_dcount <= 5 || g_audio_dcount % 500 == 0) logger_log(raop_rtp->logger, LOGGER_INFO, "raop_rtp data packet #%d len=%d initial_sync=%d", g_audio_dcount, packetlen, (int) raop_rtp->initial_sync);
 

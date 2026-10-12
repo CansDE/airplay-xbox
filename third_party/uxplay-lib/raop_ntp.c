@@ -355,6 +355,7 @@ ssize_t kernel_timestamp_session_recv(kernel_timestamp_session_t *session, char 
 #endif
     }
     //Fallback path if kernel timestamp could not be extracted; also used on MINGW64 systems or if recv_time_kernel == NULL
+    /* UWP adaptation: pass addrlen itself (not &addrlen, a pointer to the pointer); NULL if no address is wanted */
 #ifdef _WIN32
     int n = recvfrom(session->sock_fd, buf, (int) buf_len, 0, (struct sockaddr*) src_addr, (src_addr && addrlen) ? (socklen_t *) addrlen : NULL);
 #else

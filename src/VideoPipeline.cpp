@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-#include <d3d11.h>  // vor dem extern-"C"-Block, sonst landet d3d11.h (C++-Operatoren) darin
+#include <d3d11.h>  // before the extern "C" block, otherwise d3d11.h (C++ operators) ends up inside it
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -21,7 +21,7 @@ namespace {
 
 constexpr size_t kMaxQueuedPackets = 90;
 
-// Enthaelt das Annex-B-Paket einen IDR-Frame (NAL 5) oder SPS (NAL 7)?
+// Does the Annex B packet contain an IDR frame (NAL 5) or SPS (NAL 7)?
 bool ContainsKeyFrame(const uint8_t* d, int n) {
     for (int i = 0; i + 4 < n; ++i) {
         if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1) {
@@ -44,7 +44,7 @@ AVPixelFormat GetFormatHw(AVCodecContext* ctx, const AVPixelFormat* fmts) {
         auto* fc = reinterpret_cast<AVHWFramesContext*>(frames->data);
         auto* d3d = static_cast<AVD3D11VAFramesContext*>(fc->hwctx);
         d3d->BindFlags |= D3D11_BIND_SHADER_RESOURCE;
-        fc->initial_pool_size += 6;  // Reserve, weil der Renderer Bilder kurz festhaelt
+        fc->initial_pool_size += 6;  // headroom, because the renderer holds frames briefly
         if (av_hwframe_ctx_init(frames) < 0) {
             av_buffer_unref(&frames);
             break;
@@ -83,14 +83,14 @@ void VideoPipeline::Push(const uint8_t* annexB, int size, uint64_t ptsNs) {
     const int64_t target = PlayoutTargetNs(ptsNs);
     std::lock_guard<std::mutex> lock(mutex_);
     if (pushed_++ < 3) {
-        Log("Video: Zeitstempel %s, Transportlatenz %.1f ms", target ? "ok" : "unbrauchbar",
+        Log("Video: timestamp %s, transport latency %.1f ms", target ? "ok" : "unusable",
             ptsNs ? (NowNs() - static_cast<int64_t>(ptsNs)) / 1e6 : 0.0);
     }
     if (queue_.size() >= kMaxQueuedPackets) {
-        // Decoder kommt nicht hinterher: alles verwerfen und auf den naechsten Keyframe warten.
+        // The decoder cannot keep up: discard everything and wait for the next keyframe.
         queue_.clear();
         waitForKey_ = true;
-        Log("Video: Warteschlange voll, verwerfe Pakete bis zum naechsten Keyframe");
+        Log("Video: queue full, dropping packets until the next keyframe");
     }
     if (waitForKey_) {
         if (!ContainsKeyFrame(annexB, size)) return;
@@ -113,7 +113,7 @@ bool VideoPipeline::OpenDecoder(bool hardware) {
     CloseDecoder();
     const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_H264);
     if (!codec) {
-        Log("Video: kein H.264-Decoder in FFmpeg vorhanden");
+        Log("Video: FFmpeg has no H.264 decoder");
         return false;
     }
     codec_ = avcodec_alloc_context3(codec);
@@ -132,7 +132,7 @@ bool VideoPipeline::OpenDecoder(bool hardware) {
             d3d->unlock = UnlockCb;
             d3d->lock_ctx = &renderer_.Lock();
             if (av_hwdevice_ctx_init(dev) < 0) {
-                Log("Video: av_hwdevice_ctx_init (D3D11VA) fehlgeschlagen");
+                Log("Video: av_hwdevice_ctx_init (D3D11VA) failed");
                 av_buffer_unref(&dev);
                 avcodec_free_context(&codec_);
                 return false;
@@ -151,13 +151,13 @@ bool VideoPipeline::OpenDecoder(bool hardware) {
     if (ret < 0) {
         char err[128];
         av_strerror(ret, err, sizeof(err));
-        Log("Video: avcodec_open2 (%s) fehlgeschlagen: %s", hardware ? "D3D11VA" : "Software", err);
+        Log("Video: avcodec_open2 (%s) failed: %s", hardware ? "D3D11VA" : "Software", err);
         avcodec_free_context(&codec_);
         return false;
     }
     hardware_ = hardware;
     hwErrors_ = 0;
-    Log("Video: H.264-Decoder geoeffnet (%s)", hardware ? "D3D11VA Hardware" : "Software");
+    Log("Video: H.264 decoder opened (%s)", hardware ? "D3D11VA Hardware" : "Software");
     return true;
 }
 
@@ -179,9 +179,9 @@ void VideoPipeline::Decode(const std::vector<uint8_t>& packet) {
     if (ret < 0 && ret != AVERROR(EAGAIN)) {
         char err[128];
         av_strerror(ret, err, sizeof(err));
-        Log("Video: send_packet Fehler: %s", err);
+        Log("Video: send_packet error: %s", err);
         if (hardware_ && frames_ == 0 && ++hwErrors_ >= 5) {
-            Log("Video: Hardware-Decoder liefert keine Bilder, wechsle auf Software");
+            Log("Video: hardware decoder delivers no frames, switching to software");
             if (!OpenDecoder(false)) CloseDecoder();
         }
         return;
@@ -198,16 +198,16 @@ void VideoPipeline::Decode(const std::vector<uint8_t>& packet) {
             shown = renderer_.PresentI420(frame->data[0], frame->linesize[0], frame->data[1], frame->linesize[1],
                                           frame->data[2], frame->linesize[2], frame->width, frame->height);
         } else if (frames_ == 0) {
-            Log("Video: nicht unterstuetztes Pixelformat %d", frame->format);
+            Log("Video: unsupported pixel format %d", frame->format);
         }
-        if (shown && frames_++ == 0) Log("Video: erstes Bild angezeigt (%dx%d)", frame->width, frame->height);
+        if (shown && frames_++ == 0) Log("Video: first frame shown (%dx%d)", frame->width, frame->height);
         av_frame_unref(frame);
     }
     av_frame_free(&frame);
 }
 
 void VideoPipeline::Run() {
-    // Dekodieren dauert einige Millisekunden; so viel frueher wird mit dem Paket begonnen.
+    // Decoding takes a few milliseconds; work on the packet starts this much earlier.
     constexpr int64_t kDecodeLeadNs = 8'000'000;
 
     while (running_) {
@@ -219,7 +219,7 @@ void VideoPipeline::Run() {
             if (!running_) break;
             if (flushRequested_.exchange(false)) flush = true;
             if (!queue_.empty()) {
-                // Bis zum Anzeigezeitpunkt des naechsten Pakets warten (Flush/Stop unterbrechen das Warten).
+                // Wait until the display time of the next packet (Flush/Stop interrupt the wait).
                 const int64_t wait = queue_.front().targetNs ? queue_.front().targetNs - kDecodeLeadNs - NowNs() : 0;
                 if (!flush && wait > 1'000'000) {
                     cv_.wait_for(lock, std::chrono::nanoseconds(wait),

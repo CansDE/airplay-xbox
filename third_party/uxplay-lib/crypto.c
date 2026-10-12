@@ -361,8 +361,8 @@ ed25519_key_t *ed25519_key_generate(const char *device_id, const char *keyfile, 
     assert(key);
    
     if (use_keyfile) {
-        /* UWP-Anpassung: OpenSSL fuer UWP hat keine FILE*-Funktionen (BIO_new_fp, PEM_read_PrivateKey),
-           daher Datei selbst lesen und ueber einen Speicher-BIO parsen. */
+        /* UWP adaptation: OpenSSL for UWP has no FILE* functions (BIO_new_fp, PEM_read_PrivateKey),
+           so read the file ourselves and parse it through a memory BIO (writing works the same way below). */
         file = fopen(keyfile, "rb");
         if (file) {
             char pem[4096];

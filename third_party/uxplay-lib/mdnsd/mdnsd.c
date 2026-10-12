@@ -1097,9 +1097,9 @@ void mdnsd_stop(mdnsd_t *mdnsd)
     }
     MUTEX_UNLOCK(mdnsd->mutex);
 
-    /* UWP-Anpassung: erst den Thread beenden (select() laeuft hoechstens 250 ms), dann die Sockets schliessen.
-       Umgekehrt benutzt der Thread in select()/recvfrom() bereits geschlossene Sockets; die strikte
-       Handle-Pruefung von UWP beendet den Prozess dann mit STATUS_INVALID_HANDLE (0xC0000008). */
+    /* UWP adaptation: stop the thread first (select() runs for at most 250 ms), then close the sockets.
+       The other way round, the thread uses already closed sockets in select()/recvfrom(); UWP's strict
+       handle checking then terminates the process with STATUS_INVALID_HANDLE (0xC0000008). */
     if (thread) {
         THREAD_JOIN(thread);
     }

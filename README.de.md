@@ -8,6 +8,9 @@ außerdem **AirPlay-Video** („Wiedergabe auf Xbox Series X“ in Apps wie YouT
 
 **Stand: läuft auf der Xbox Series X (Developer Mode).** Getestet mit einem iPhone; Details unter „Teststand“.
 
+Die Texte der App (Statusbildschirm, Fehlermeldungen) richten sich nach der Systemsprache: Deutsch auf deutschen Systemen,
+sonst Englisch. Code-Kommentare und die Logdatei sind auf Englisch.
+
 ## Aufbau
 
 | Baustein | Umsetzung |
@@ -98,7 +101,7 @@ Wichtig: iPhone/Mac und Xbox müssen im **selben Netzwerk/VLAN** sein, und das W
 - **Bekannt nicht möglich:** TikTok schickt beim AirPlay-Symbol keine Video-Anfrage, nur die Spiegelung läuft weiter.
 - **Noch offen:** der YouTube-Weg (Playlists vom iPhone, `raop_hls_export_playlists`) und das MacBook.
 
-Beim Portieren der UxPlay-Bibliothek waren vier Windows-spezifische Fehler zu beheben, im Quelltext mit „UWP-Anpassung“ markiert:
+Beim Portieren der UxPlay-Bibliothek waren vier Windows-spezifische Fehler zu beheben, im Quelltext mit „UWP adaptation“ markiert:
 nicht initialisierter Mutex in `httpd.c`, `unsigned` Paketlänge in `raop_rtp.c` (`recv` liefert unter Windows oft -1), ein falscher
 `recvfrom`-Aufruf in `raop_ntp.c` und `mdnsd_stop` in `mdnsd.c`, das Sockets schloss, während der mDNS-Thread sie noch benutzte. UWP prüft
 Handles strikt, das führte beim Pausieren der App (Minimieren, Xbox-Home-Taste) zum Absturz mit `0xC0000008`.
@@ -107,7 +110,7 @@ Fällt der D3D11VA-Hardwaredecoder aus, schaltet die App automatisch auf den Sof
 
 ## Lizenz und Hinweise
 
-GPL-3.0, siehe [`LICENSE`](LICENSE). Fremdcode, Versionen und Lizenzen: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+GPL-3.0, siehe [`LICENSE`](LICENSE). Fremdcode, Versionen und Lizenzen (auf Englisch): [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 AirPlay, iPhone, iPad und Mac sind Marken von Apple Inc., Xbox ist eine Marke der Microsoft Corporation. Privates Hobbyprojekt ohne
 Verbindung zu Apple oder Microsoft. Die FairPlay-Kompatibilität stammt aus dem Open-Source-Projekt UxPlay; die App ist für den

@@ -1,4 +1,4 @@
-// UxPlay-Header zuerst: sie brauchen die POSIX-Luecken-Fixes (ssize_t, SOL_TCP, ...) vor allen anderen Includes.
+// UxPlay headers first: they need the POSIX gap fixes (ssize_t, SOL_TCP, ...) before all other includes.
 #include "uxplay_win_fixes.h"
 
 extern "C" {
@@ -19,6 +19,7 @@ extern "C" {
 #include "AirPlayServer.h"
 #include "AudioPipeline.h"
 #include "HlsPlayer.h"
+#include "Lang.h"
 #include "Log.h"
 #include "Sync.h"
 #include "VideoPipeline.h"
@@ -26,18 +27,17 @@ extern "C" {
 namespace app {
 
 namespace {
-// Gleiche Port-Belegung wie "uxplay -p": TCP 7100/7000/7001, UDP 7011/6001/6000
+// Same ports as "uxplay -p": TCP 7100/7000/7001, UDP 7011/6001/6000
 unsigned short kTcpPorts[3] = {7100, 7000, 7001};
 unsigned short kUdpPorts[3] = {7011, 6001, 6000};
 
-// Features wie bei "uxplay -hls" (siehe uxplay.cpp start_dnssd): Spiegelung + Audio, dazu Bit 0 (Video) und
-// Bit 4 (HTTP Live Streaming) fuer AirPlay-Video. H.265 (Bit 42) bleibt aus.
+// Features as with "uxplay -hls" (see uxplay.cpp start_dnssd): mirroring + audio, plus bit 0 (video) and
+// bit 4 (HTTP Live Streaming) for AirPlay video. H.265 (bit 42) stays off.
 const int kFeatureBitsOn[] = {0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 25, 28, 30};
 
-// Systemsprache als BCP-47-Tag (z. B. "de-DE") fuer die Tonspur-/Untertitelwahl bei AirPlay-Video.
-// Lautstaerke (AirPlay-dB, -30 = leise .. 0 = voll) bleibt ueber Verbindungen und Neustarts erhalten. Der Sender
-// uebernimmt sie beim Verbinden aus "initialVolume" in GET /info; ohne gespeicherten Wert starten wir bei halber
-// Lautstaerke statt voll. "Stumm" (-144) wird nicht gespeichert, sonst begaenne die naechste Sitzung lautlos.
+// Volume (AirPlay dB, -30 = quiet .. 0 = full) persists across connections and restarts. The sender picks it up
+// from "initialVolume" in GET /info when connecting; without a saved value we start at half volume instead of full.
+// "Mute" (-144) is not saved, otherwise the next session would start silent.
 constexpr double kDefaultVolumeDb = -15.0;
 
 double LoadVolumeDb() {
@@ -61,6 +61,7 @@ void SaveVolumeDb(double db) {
     }
 }
 
+// System language as a BCP 47 tag (e.g. "de-DE") for audio track/subtitle selection in AirPlay video.
 const char* SystemLanguage() {
     static char lang[LOCALE_NAME_MAX_LENGTH] = "";
     if (!lang[0]) {
@@ -92,27 +93,27 @@ struct AirPlayServer::Impl {
     bool running = false;
 
     std::atomic<int> connections{0};
-    std::atomic<bool> mirroring{false};  // Spiegelungs-Stream aktiv (unabhaengig davon, ob gerade Bilder kommen)
-    mutable std::mutex mutex;            // schuetzt clientName
+    std::atomic<bool> mirroring{false};  // mirroring stream active (regardless of whether frames are arriving)
+    mutable std::mutex mutex;            // protects clientName
     std::string clientName;
     std::atomic<double> clientVolume{kDefaultVolumeDb};
 
-    // Gemeinsamer Versatz Senderuhr -> lokale Uhr fuer Bild UND Ton (wie in uxplay.cpp: remote_clock_offset).
-    // Wird beim ersten Paket einer Verbindung festgelegt, damit beide Stroeme dieselbe Zeitbasis haben.
+    // Shared offset sender clock -> local clock for video AND audio (as in uxplay.cpp: remote_clock_offset).
+    // Set on the first packet of a connection so that both streams share the same time base.
     std::mutex clockMutex;
     bool clockValid = false;
     int64_t clockOffsetNs = 0;
 
     Impl(VideoPipeline& v, AudioPipeline& a, HlsPlayer& h) : video(v), audio(a), hls(h) {}
 
-    // Sender-Zeitstempel (ntp_time_remote, ns) -> lokale Uhr (NowNs-Zeitbasis); 0 bleibt 0.
+    // Sender timestamp (ntp_time_remote, ns) -> local clock (NowNs time base); 0 stays 0.
     uint64_t ToLocal(uint64_t remoteNs) {
         if (remoteNs == 0) return 0;
         std::lock_guard<std::mutex> lock(clockMutex);
         if (!clockValid) {
             clockOffsetNs = NowNs() - static_cast<int64_t>(remoteNs);
             clockValid = true;
-            Log("AirPlay: Uhrversatz zum Sender festgelegt");
+            Log("AirPlay: clock offset to sender set");
         }
         return static_cast<uint64_t>(static_cast<int64_t>(remoteNs) + clockOffsetNs);
     }
@@ -127,7 +128,7 @@ namespace {
 
 AirPlayServer::Impl* I(void* cls) { return static_cast<AirPlayServer::Impl*>(cls); }
 
-// ---- Callbacks der UxPlay-Bibliothek (laufen auf deren Netzwerk-Threads) ----------------------------------------
+// ---- UxPlay library callbacks (run on its network threads) ------------------------------------------------------
 
 void CbAudioProcess(void* cls, raop_ntp_t*, audio_decode_struct* d) {
     auto* s = I(cls);
@@ -136,8 +137,8 @@ void CbAudioProcess(void* cls, raop_ntp_t*, audio_decode_struct* d) {
 
 void CbVideoProcess(void* cls, raop_ntp_t*, video_decode_struct* d) {
     auto* s = I(cls);
-    if (d->is_h265) return;  // Feature-Bit 42 ist aus; ein H.265-Stream wird nicht erwartet
-    if (!s->mirroring.exchange(true)) Log("AirPlay: Spiegelung aktiv");
+    if (d->is_h265) return;  // feature bit 42 is off; no H.265 stream expected
+    if (!s->mirroring.exchange(true)) Log("AirPlay: mirroring active");
     s->video.Push(d->data, d->data_len, s->ToLocal(d->ntp_time_remote));
 }
 
@@ -147,13 +148,13 @@ void CbConnFeedback(void*) {}
 
 void CbConnInit(void* cls) {
     int n = ++I(cls)->connections;
-    Log("AirPlay: Verbindung geoeffnet (%d aktiv)", n);
+    Log("AirPlay: connection opened (%d active)", n);
 }
 
 void CbConnDestroy(void* cls) {
     auto* s = I(cls);
     int n = --s->connections;
-    Log("AirPlay: Verbindung geschlossen (%d aktiv)", n);
+    Log("AirPlay: connection closed (%d active)", n);
     if (n <= 0) {
         s->connections = 0;
         s->audio.StopStream();
@@ -167,21 +168,21 @@ void CbConnDestroy(void* cls) {
 }
 
 void CbConnReset(void* cls, int reason) {
-    Log("AirPlay: Verbindung zurueckgesetzt (Grund %d)", reason);
+    Log("AirPlay: connection reset (reason %d)", reason);
     I(cls)->video.Flush();
 }
 
 void CbVideoReset(void* cls, reset_type_t type) {
     auto* s = I(cls);
-    Log("AirPlay: video_reset (Typ %d)", static_cast<int>(type));
+    Log("AirPlay: video_reset (type %d)", static_cast<int>(type));
     switch (type) {
     case RESET_TYPE_ON_VIDEO_PLAY:
         return;
-    case RESET_TYPE_NOHOLD:  // neues Geraet uebernimmt: auch ein laufendes AirPlay-Video beenden
+    case RESET_TYPE_NOHOLD:  // a new device takes over: also end any running AirPlay video
         s->hls.Stop();
         raop_destroy_airplay_video(s->raop, -1);
         break;
-    case RESET_TYPE_HLS_SHUTDOWN:  // Video zu Ende oder abgebrochen (wie video_reset in uxplay.cpp)
+    case RESET_TYPE_HLS_SHUTDOWN:  // video finished or aborted (like video_reset in uxplay.cpp)
         s->hls.Stop();
         raop_destroy_airplay_video(s->raop, -1);
         raop_remove_hls_connections(s->raop);
@@ -216,20 +217,20 @@ void CbAudioSetProgress(void*, uint32_t*, uint32_t*, uint32_t*) {}
 
 void CbAudioGetFormat(void* cls, unsigned char* ct, unsigned short* spf, bool* usingScreen, bool* isMedia,
                       uint64_t* audioFormat) {
-    Log("AirPlay: Audioformat ct=%d spf=%d usingScreen=%d isMedia=%d format=0x%llx", *ct, *spf, *usingScreen ? 1 : 0,
+    Log("AirPlay: audio format ct=%d spf=%d usingScreen=%d isMedia=%d format=0x%llx", *ct, *spf, *usingScreen ? 1 : 0,
         *isMedia ? 1 : 0, static_cast<unsigned long long>(*audioFormat));
     I(cls)->audio.StartStream(*ct);
 }
 
 void CbVideoReportSize(void*, float* wSrc, float* hSrc, float* w, float* h) {
-    Log("AirPlay: Videogroesse Quelle %.0fx%.0f, Anzeige %.0fx%.0f", *wSrc, *hSrc, *w, *h);
+    Log("AirPlay: video size source %.0fx%.0f, display %.0fx%.0f", *wSrc, *hSrc, *w, *h);
 }
 
 void CbMirrorVideoRunning(void*, bool) {}
 
 void CbReportClientRequest(void* cls, char* deviceid, char* model, char* name, bool* admit) {
     auto* s = I(cls);
-    Log("AirPlay: Verbindungsanfrage von %s (%s), deviceID=%s", name, model, deviceid);
+    Log("AirPlay: connection request from %s (%s), deviceID=%s", name, model, deviceid);
     *admit = true;
     std::lock_guard<std::mutex> lock(s->mutex);
     s->clientName = std::string(name ? name : "") + " (" + (model ? model : "") + ")";
@@ -240,7 +241,7 @@ void CbRegisterClient(void*, const char*, const char*, const char*) {}
 bool CbCheckRegister(void*, const char*) { return true; }
 
 const char* CbPasswd(void*, int* len) {
-    *len = 0;  // kein Passwort
+    *len = 0;  // no password
     return nullptr;
 }
 
@@ -248,13 +249,13 @@ void CbExportDacp(void*, const char*, const char*) {}
 
 int CbVideoSetCodec(void*, video_codec_t codec) {
     if (codec == VIDEO_CODEC_H265) {
-        Log("AirPlay: H.265 angefordert, wird nicht unterstuetzt");
+        Log("AirPlay: H.265 requested, not supported");
         return -1;
     }
     return 0;
 }
 
-// ---- AirPlay-Video (HLS/URL): Steuerbefehle des Senders an den HlsPlayer ----------------------------------------
+// ---- AirPlay video (HLS/URL): sender playback commands forwarded to the HlsPlayer --------------------------------
 
 void CollectPlaylist(void* cls, const char* path, const char* playlist, int len) {
     (*static_cast<HlsPlayer::Playlists*>(cls))[path] = std::string(playlist, len);
@@ -263,12 +264,12 @@ void CollectPlaylist(void* cls, const char* path, const char* playlist, int len)
 void CbOnVideoPlay(void* cls, const char* location, const float startPosition) {
     auto* s = I(cls);
     std::string url = location ? location : "";
-    Log("AirPlay: Video abspielen: %s (Start %.1f s)", url.c_str(), startPosition);
+    Log("AirPlay: play video: %s (start %.1f s)", url.c_str(), startPosition);
     HlsPlayer::Playlists playlists;
     if (url.rfind("http://localhost", 0) == 0) {
-        // Die Playlists hat UxPlay per FCUP vom iPhone geholt; der Player bekommt sie direkt aus dem Speicher.
+        // UxPlay fetched the playlists from the iPhone via FCUP; the player gets them straight from memory.
         int n = raop_hls_export_playlists(s->raop, CollectPlaylist, &playlists);
-        Log("AirPlay: %d Playlists vom Sender uebernommen", n);
+        Log("AirPlay: %d playlists taken over from the sender", n);
     }
     s->video.Flush();
     s->mirroring = false;
@@ -276,17 +277,17 @@ void CbOnVideoPlay(void* cls, const char* location, const float startPosition) {
 }
 
 void CbOnVideoScrub(void* cls, const float position) {
-    Log("AirPlay: Video spulen auf %.1f s", position);
+    Log("AirPlay: seek video to %.1f s", position);
     I(cls)->hls.Seek(position);
 }
 
 void CbOnVideoRate(void* cls, const float rate) {
-    Log("AirPlay: Video-Rate %.2f", rate);
+    Log("AirPlay: video rate %.2f", rate);
     I(cls)->hls.SetRate(rate);
 }
 
 void CbOnVideoStop(void* cls) {
-    Log("AirPlay: Video stoppen");
+    Log("AirPlay: stop video");
     I(cls)->hls.Stop();
 }
 
@@ -302,7 +303,7 @@ void CbOnVideoAcquirePlaybackInfo(void* cls, playback_info_t* info) {
     info->playback_buffer_full = i.bufferFull;
     info->playback_likely_to_keep_up = !i.bufferEmpty;
     if (i.finished) {
-        // Signal an UxPlay: Video beendet -> video_reset(RESET_TYPE_HLS_SHUTDOWN)
+        // Signal to UxPlay: video finished -> video_reset(RESET_TYPE_HLS_SHUTDOWN)
         info->position = -1.0;
         info->duration = -1.0;
     }
@@ -311,7 +312,7 @@ void CbOnVideoAcquirePlaybackInfo(void* cls, playback_info_t* info) {
 float CbOnVideoPlaylistRemove(void* cls) {
     HlsPlayer::Info i = I(cls)->hls.GetInfo();
     I(cls)->hls.SetRate(0.0f);
-    Log("AirPlay: Video aus der Playlist entfernt bei %.1f s", i.position);
+    Log("AirPlay: video removed from playlist at %.1f s", i.position);
     return i.position > 0 ? static_cast<float>(i.position) : 0.0f;
 }
 
@@ -336,17 +337,17 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
     s.clientVolume = volume;
     s.audio.SetVolumeDb(static_cast<float>(volume));
     s.hls.SetVolumeDb(static_cast<float>(volume));
-    Log("AirPlay: Startlautstaerke %.1f dB", volume);
+    Log("AirPlay: initial volume %.1f dB", volume);
 
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        error = "WSAStartup fehlgeschlagen";
+        error = Tr("WSAStartup fehlgeschlagen", "WSAStartup failed");
         return false;
     }
 
     char hw[6];
     if (!ParseDeviceId(deviceId, hw)) {
-        error = "Ungueltige Geraete-ID: " + deviceId;
+        error = Tr("Ungültige Geräte-ID: ", "Invalid device ID: ") + deviceId;
         return false;
     }
 
@@ -356,7 +357,7 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
     int dnssdError = 0;
     s.dnssd = dnssd_init(name.c_str(), static_cast<int>(name.size()), hw, 6, 0, &dnssdError);
     if (!s.dnssd || dnssdError) {
-        error = "dnssd_init fehlgeschlagen (Fehler " + std::to_string(dnssdError) + ")";
+        error = Tr("dnssd_init fehlgeschlagen (Fehler ", "dnssd_init failed (error ") + std::to_string(dnssdError) + ")";
         s.dnssd = nullptr;
         return false;
     }
@@ -365,7 +366,7 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
         dnssd_set_airplay_features(s.dnssd, bit, on ? 1 : 0);
     }
 
-    Log("AirPlay: dnssd_init + Features ok");
+    Log("AirPlay: dnssd_init + features ok");
     raop_callbacks_t cbs;
     memset(&cbs, 0, sizeof(cbs));
     cbs.cls = &s;
@@ -406,7 +407,7 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
 
     s.raop = raop_init(&cbs);
     if (!s.raop) {
-        error = "raop_init fehlgeschlagen";
+        error = Tr("raop_init fehlgeschlagen", "raop_init failed");
         Stop();
         return false;
     }
@@ -414,9 +415,9 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
     raop_set_log_level(s.raop, LOGGER_DEBUG);
     Log("AirPlay: raop_init ok");
 
-    // nohold = 1: ein neues Geraet darf die laufende Spiegelung uebernehmen.
+    // nohold = 1: a new device may take over the running mirroring session.
     if (raop_init2(s.raop, 1, deviceId.c_str(), keyfilePath.c_str())) {
-        error = "raop_init2 fehlgeschlagen (Schluesseldatei: " + keyfilePath + ")";
+        error = Tr("raop_init2 fehlgeschlagen (Schlüsseldatei: ", "raop_init2 failed (key file: ") + keyfilePath + ")";
         Stop();
         return false;
     }
@@ -424,39 +425,40 @@ bool AirPlayServer::Start(const std::string& name, const std::string& deviceId, 
     raop_set_plist(s.raop, "height", 1080);
     raop_set_plist(s.raop, "refreshRate", 60);
     raop_set_plist(s.raop, "maxFPS", 60);
-    raop_set_plist(s.raop, "hls", 1);  // AirPlay-Video annehmen (sonst ignoriert UxPlay /play usw.)
+    raop_set_plist(s.raop, "hls", 1);  // accept AirPlay video (otherwise UxPlay ignores /play etc.)
     raop_set_lang(s.raop, nullptr, nullptr, SystemLanguage());
     Log("AirPlay: raop_init2 + plist ok");
     raop_set_tcp_ports(s.raop, kTcpPorts);
     raop_set_udp_ports(s.raop, kUdpPorts);
-    Log("AirPlay: Ports gesetzt");
+    Log("AirPlay: ports set");
 
     s.port = raop_get_port(s.raop);
     Log("AirPlay: raop_get_port=%u", s.port);
     if (raop_start_httpd(s.raop, &s.port) < 0) {
-        error = "HTTP-Server konnte nicht gestartet werden (Port belegt?)";
+        error = Tr("HTTP-Server konnte nicht gestartet werden (Port belegt?)", "Could not start the HTTP server (port in use?)");
         Stop();
         return false;
     }
     raop_set_port(s.raop, s.port);
     raop_set_dnssd(s.raop, s.dnssd);
-    Log("AirPlay: httpd gestartet, dnssd gesetzt");
+    Log("AirPlay: httpd started, dnssd set");
 
     if (dnssd_register_raop(s.dnssd, s.port) || dnssd_register_airplay(s.dnssd, s.port)) {
-        error = "mDNS-Registrierung fehlgeschlagen (Multicast im Netzwerk blockiert?)";
+        error = Tr("mDNS-Registrierung fehlgeschlagen (Multicast im Netzwerk blockiert?)",
+                   "mDNS registration failed (multicast blocked on the network?)");
         Stop();
         return false;
     }
     s.running = true;
-    Log("AirPlay: Server \"%s\" laeuft auf Port %u (ID %s)", name.c_str(), s.port, deviceId.c_str());
+    Log("AirPlay: server \"%s\" running on port %u (ID %s)", name.c_str(), s.port, deviceId.c_str());
     return true;
 }
 
 void AirPlayServer::Stop() {
     Impl& s = *impl_;
-    // Einzelschritte protokollieren: ein Absturz beim Anhalten (App wird pausiert) laesst sich so eingrenzen.
+    // Log the individual steps so a crash while stopping (app being suspended) can be narrowed down.
     if (s.dnssd) {
-        Log("AirPlay: Stop - mDNS abmelden");
+        Log("AirPlay: Stop - unregistering mDNS");
         dnssd_unregister_raop(s.dnssd);
         dnssd_unregister_airplay(s.dnssd);
     }
@@ -470,7 +472,7 @@ void AirPlayServer::Stop() {
         dnssd_destroy(s.dnssd);
         s.dnssd = nullptr;
     }
-    if (s.running) Log("AirPlay: Server gestoppt");
+    if (s.running) Log("AirPlay: server stopped");
     s.running = false;
     s.connections = 0;
     s.audio.StopStream();
@@ -492,7 +494,7 @@ bool AirPlayServer::IsMirroring() const { return impl_->mirroring; }
 void AirPlayServer::DisconnectClients() {
     Impl& s = *impl_;
     if (!s.raop || !s.running) return;
-    Log("AirPlay: trenne alle Verbindungen");
+    Log("AirPlay: disconnecting all clients");
     s.hls.Stop();
     raop_stop_httpd(s.raop);
     unsigned short p = s.port;

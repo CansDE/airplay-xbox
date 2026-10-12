@@ -14,7 +14,7 @@ namespace app {
 
 class Renderer;
 
-// H.264 (Annex-B) -> Decoder-Thread -> Renderer. Bevorzugt D3D11VA, sonst Software-Decoder.
+// H.264 (Annex B) -> decoder thread -> renderer. Prefers D3D11VA, otherwise the software decoder.
 class VideoPipeline {
 public:
     explicit VideoPipeline(Renderer& renderer);
@@ -23,10 +23,10 @@ public:
     void Start();
     void Stop();
 
-    // Wird vom AirPlay-Netzwerkthread aufgerufen; kopiert die Daten. ptsNs = Sender-Zeitstempel in lokaler Uhr
-    // (0 = unbekannt); das Bild wird zu ptsNs + kPlayoutDelayNs angezeigt, passend zum Ton.
+    // Called from the AirPlay network thread; copies the data. ptsNs = sender timestamp in local clock
+    // (0 = unknown); the frame is shown at ptsNs + kPlayoutDelayNs, matching the audio.
     void Push(const uint8_t* annexB, int size, uint64_t ptsNs);
-    // Verwirft wartende Pakete und leert den Decoder (z. B. bei Verbindungswechsel).
+    // Discards pending packets and flushes the decoder (e.g. when the connection changes).
     void Flush();
 
     bool UsesHardware() const { return hardware_.load(); }
@@ -47,16 +47,16 @@ private:
     std::condition_variable cv_;
     struct Packet {
         std::vector<uint8_t> data;
-        int64_t targetNs = 0;  // Anzeigezeitpunkt (0 = sofort)
+        int64_t targetNs = 0;  // display time (0 = immediately)
     };
     std::deque<Packet> queue_;
-    bool waitForKey_ = false;  // durch mutex_ geschuetzt
+    bool waitForKey_ = false;  // protected by mutex_
 
     AVCodecContext* codec_ = nullptr;
     AVBufferRef* hwDevice_ = nullptr;
     int hwErrors_ = 0;
     uint64_t frames_ = 0;
-    uint64_t pushed_ = 0;  // durch mutex_ geschuetzt (nur Diagnose)
+    uint64_t pushed_ = 0;  // protected by mutex_ (diagnostics only)
 };
 
 }  // namespace app

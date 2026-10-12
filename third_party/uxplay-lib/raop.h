@@ -158,7 +158,7 @@ RAOP_API void raop_remove_known_connections(raop_t * raop);
 RAOP_API void raop_remove_hls_connections(raop_t * raop);
 RAOP_API void raop_destroy_airplay_video(raop_t *raop, int id);
 RAOP_API void raop_playlist_remove(raop_t *raop, void *airplay_video, float position);
-/* UWP-Anpassung: Playlists des aktuellen AirPlay-Videos fuer den eingebauten Player exportieren */
+/* UWP adaptation: export the playlists of the current AirPlay video for the built-in player */
 typedef void (*raop_hls_playlist_cb_t)(void *cls, const char *path, const char *playlist, int len);
 RAOP_API int raop_hls_export_playlists(raop_t *raop, raop_hls_playlist_cb_t cb, void *cls);
 #ifdef __cplusplus

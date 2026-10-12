@@ -15,7 +15,7 @@ namespace {
 std::mutex g_mutex;
 FILE* g_file = nullptr;
 
-// Schreibt den aktuellen Aufrufstack als "Modul+Offset" ins Log (Offsets lassen sich mit der Linker-Map aufloesen).
+// Writes the current call stack as "module+offset" to the log (offsets can be resolved with the linker map).
 void LogStack(const char* title) {
     void* frames[48];
     USHORT n = CaptureStackBackTrace(1, 48, frames, nullptr);
@@ -36,31 +36,31 @@ void LogStack(const char* title) {
 }
 
 void InvalidParameterHandler(const wchar_t* expr, const wchar_t* func, const wchar_t* file, unsigned line, uintptr_t) {
-    Log("ABSTURZ: ungueltiger CRT-Parameter  expr=%ls func=%ls file=%ls line=%u", expr ? expr : L"-",
+    Log("CRASH: invalid CRT parameter  expr=%ls func=%ls file=%ls line=%u", expr ? expr : L"-",
         func ? func : L"-", file ? file : L"-", line);
     LogStack("invalid parameter");
     TerminateProcess(GetCurrentProcess(), 0xC0000409);
 }
 
 void AbortHandler(int) {
-    Log("ABSTURZ: abort() / assert");
+    Log("CRASH: abort() / assert");
     LogStack("abort");
     TerminateProcess(GetCurrentProcess(), 0xC0000409);
 }
 
 void TerminateHandler() {
-    Log("ABSTURZ: std::terminate (nicht abgefangene C++-Exception)");
+    Log("CRASH: std::terminate (uncaught C++ exception)");
     LogStack("terminate");
     TerminateProcess(GetCurrentProcess(), 0xC0000409);
 }
 
 LONG CALLBACK VectoredHandler(PEXCEPTION_POINTERS info) {
     DWORD code = info->ExceptionRecord->ExceptionCode;
-    // Nur schwere Fehler protokollieren (C++-Exceptions 0xE06D7363 und Debugger-Meldungen ignorieren).
+    // Only log severe errors (ignore C++ exceptions 0xE06D7363 and debugger messages).
     if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_STACK_OVERFLOW || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
         code == EXCEPTION_INT_DIVIDE_BY_ZERO || code == EXCEPTION_ARRAY_BOUNDS_EXCEEDED ||
-        code == EXCEPTION_INVALID_HANDLE) {  // ungueltiges Handle (UWP prueft Handles strikt)
-        Log("ABSTURZ: Exception 0x%08lX bei %p", code, info->ExceptionRecord->ExceptionAddress);
+        code == EXCEPTION_INVALID_HANDLE) {  // invalid handle (UWP checks handles strictly)
+        Log("CRASH: exception 0x%08lX at %p", code, info->ExceptionRecord->ExceptionAddress);
         LogStack("exception");
     }
     return EXCEPTION_CONTINUE_SEARCH;
@@ -78,7 +78,7 @@ void LogInit(const std::wstring& folder) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_file) return;
     std::wstring path = folder + L"\\airplay.log";
-    // Alte Logs begrenzen: ueber 2 MB neu anfangen.
+    // Limit old logs: start over above 2 MB.
     WIN32_FILE_ATTRIBUTE_DATA info{};
     const wchar_t* mode = L"a";
     if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info) && info.nFileSizeLow > 2u * 1024 * 1024) {

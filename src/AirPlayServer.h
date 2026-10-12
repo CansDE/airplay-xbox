@@ -11,28 +11,28 @@ class VideoPipeline;
 class AudioPipeline;
 class HlsPlayer;
 
-// Kapselt den AirPlay-Empfaenger (UxPlay-Protokollbibliothek): mDNS-Ankuendigung, RTSP/HTTP-Server,
-// Pairing, FairPlay, Spiegelung (Video) und Audio. Dekodierte Medien gehen an die Pipelines,
-// AirPlay-Video ("Wiedergabe auf ...", HLS/URL) an den HlsPlayer.
+// Wraps the AirPlay receiver (UxPlay protocol library): mDNS advertisement, RTSP/HTTP server,
+// pairing, FairPlay, mirroring (video) and audio. Decoded media goes to the pipelines,
+// AirPlay video ("Play on ...", HLS/URL) to the HlsPlayer.
 class AirPlayServer {
 public:
     AirPlayServer(VideoPipeline& video, AudioPipeline& audio, HlsPlayer& hls);
     ~AirPlayServer();
 
-    // deviceId: "AA:BB:CC:DD:EE:FF"; keyfilePath: Datei fuer den dauerhaften Pairing-Schluessel.
+    // deviceId: "AA:BB:CC:DD:EE:FF"; keyfilePath: file for the persistent pairing key.
     bool Start(const std::string& name, const std::string& deviceId, const std::string& keyfilePath,
                std::string& error);
     void Stop();
     bool IsRunning() const;
 
     int ConnectionCount() const;
-    std::string ClientDescription() const;  // z. B. "iPhone von Alex (iPhone15,2)"; leer wenn niemand verbunden
-    bool IsMirroring() const;               // true, solange ein Spiegelungs-Stream laeuft
+    std::string ClientDescription() const;  // e.g. "Alex's iPhone (iPhone15,2)"; empty if nobody is connected
+    bool IsMirroring() const;               // true while a mirroring stream is running
 
-    // Alle Verbindungen trennen (z. B. Controller-Taste B).
+    // Disconnect all clients (e.g. controller button B).
     void DisconnectClients();
 
-    struct Impl;  // oeffentlich deklariert, damit die C-Callbacks in der .cpp darauf zugreifen koennen
+    struct Impl;  // declared public so the C callbacks in the .cpp can access it
 
 private:
     std::unique_ptr<Impl> impl_;

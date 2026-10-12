@@ -1,4 +1,4 @@
-/* Wird per /FI in jede UxPlay-Quelldatei eingebunden: schliesst Luecken zwischen POSIX und MSVC/UWP. */
+/* Force-included (/FI) into every UxPlay source file: fills the gaps between POSIX and MSVC/UWP. */
 #ifndef UXPLAY_WIN_FIXES_H
 #define UXPLAY_WIN_FIXES_H
 #ifndef WIN32_LEAN_AND_MEAN

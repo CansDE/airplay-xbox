@@ -28,7 +28,7 @@
     <Application Id="App" Executable="AirPlayXbox.exe" EntryPoint="AirPlayXbox.App">
       <uap:VisualElements
         DisplayName="AirPlay Xbox"
-        Description="AirPlay-Empfänger: Bildschirm und Ton von iPhone und Mac auf der Xbox anzeigen"
+        Description="AirPlay receiver: show the screen and audio of iPhone and Mac on the Xbox"
         BackgroundColor="#0A0D17"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

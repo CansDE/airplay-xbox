@@ -3,11 +3,11 @@
 
 namespace app {
 
-// Schreibt nach OutputDebugString und (wenn gesetzt) in <folder>\airplay.log.
+// Writes to OutputDebugString and (if set) to <folder>\airplay.log.
 void LogInit(const std::wstring& folder);
 void Log(const char* fmt, ...);
 
-// Protokolliert Abstuerze (ungueltige CRT-Parameter, abort, Exceptions) samt Aufrufstack ins Log.
+// Logs crashes (invalid CRT parameters, abort, exceptions) including the call stack.
 void InstallCrashDiagnostics();
 
 }  // namespace app

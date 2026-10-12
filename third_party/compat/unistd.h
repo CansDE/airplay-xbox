@@ -1,4 +1,4 @@
-/* unistd.h-Ersatz fuer UWP: nur das, was UxPlay braucht. */
+/* unistd.h replacement for UWP: only what UxPlay needs. */
 #ifndef COMPAT_UNISTD_H
 #define COMPAT_UNISTD_H
 #ifndef WIN32_LEAN_AND_MEAN

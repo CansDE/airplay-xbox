@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "Lang.h"
 #include "Log.h"
 
 using Microsoft::WRL::ComPtr;
@@ -12,7 +13,7 @@ namespace app {
 namespace {
 bool Failed(HRESULT hr, const char* what) {
     if (SUCCEEDED(hr)) return false;
-    Log("Renderer: %s fehlgeschlagen (0x%08X)", what, static_cast<unsigned>(hr));
+    Log("Renderer: %s failed (0x%08X)", what, static_cast<unsigned>(hr));
     return true;
 }
 }  // namespace
@@ -57,11 +58,11 @@ bool Renderer::Init(IUnknown* coreWindow, UINT width, UINT height) {
 
     if (!CreateSwapchainResources()) return false;
 
-    // Video-Processor (kann auf manchen Geraeten fehlen -> dann nur Wartebildschirm)
+    // Video processor (may be missing on some devices -> idle screen only)
     if (SUCCEEDED(device_.As(&videoDevice_)) && SUCCEEDED(context_.As(&videoContext_))) {
-        Log("Renderer: Video-Processor verfuegbar");
+        Log("Renderer: video processor available");
     } else {
-        Log("Renderer: Video-Processor NICHT verfuegbar");
+        Log("Renderer: video processor NOT available");
     }
 
     // Direct2D / DirectWrite
@@ -78,7 +79,7 @@ bool Renderer::Init(IUnknown* coreWindow, UINT width, UINT height) {
                "DWriteCreateFactory"))
         return false;
 
-    Log("Renderer: bereit (%ux%u)", width_, height_);
+    Log("Renderer: ready (%ux%u)", width_, height_);
     return true;
 }
 
@@ -146,7 +147,7 @@ bool Renderer::EnsureVideoProcessor(int srcW, int srcH) {
     videoContext_->VideoProcessorSetStreamFrameFormat(vp_.Get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
     vpSrcW_ = srcW;
     vpSrcH_ = srcH;
-    Log("Renderer: Video-Processor fuer %dx%d erstellt", srcW, srcH);
+    Log("Renderer: video processor created for %dx%d", srcW, srcH);
     return true;
 }
 
@@ -163,7 +164,7 @@ bool Renderer::BlitToBackBuffer(ID3D11Texture2D* tex, UINT slice, int srcW, int 
                "CreateVideoProcessorInputView"))
         return false;
 
-    // Seitenverhaeltnis erhalten (Letterbox/Pillarbox)
+    // Preserve aspect ratio (letterbox/pillarbox)
     double scale = std::min(static_cast<double>(width_) / srcW, static_cast<double>(height_) / srcH);
     LONG dw = static_cast<LONG>(srcW * scale), dh = static_cast<LONG>(srcH * scale);
     RECT dst{static_cast<LONG>((width_ - dw) / 2), static_cast<LONG>((height_ - dh) / 2), 0, 0};
@@ -333,7 +334,7 @@ void Renderer::DrawIdle(const IdleInfo& info) {
     text(info.deviceName, 64, 400, accent.Get(), DWRITE_FONT_WEIGHT_NORMAL);
     text(info.status, 44, 520, white.Get(), DWRITE_FONT_WEIGHT_NORMAL);
     text(info.hint, 34, 640, grey.Get(), DWRITE_FONT_WEIGHT_NORMAL);
-    if (!info.ip.empty()) text(L"IP-Adresse: " + info.ip, 30, 940, grey.Get(), DWRITE_FONT_WEIGHT_NORMAL);
+    if (!info.ip.empty()) text(Tr(L"IP-Adresse: ", L"IP address: ") + info.ip, 30, 940, grey.Get(), DWRITE_FONT_WEIGHT_NORMAL);
 
     d2dContext_->EndDraw();
     d2dContext_->SetTarget(nullptr);

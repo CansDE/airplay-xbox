@@ -1,33 +1,44 @@
-# Fremdcode und Lizenzen
+# Third-party code and licenses
 
-Dieses Projekt steht als Ganzes unter der **GNU General Public License v3.0** (siehe `LICENSE`), weil es UxPlay-Code (GPL-3.0) enthält.
-Die folgenden Bestandteile stammen von Dritten. Ihre Lizenzdateien liegen jeweils im Ordner daneben.
+This project as a whole is licensed under the **GNU General Public License v3.0** (see `LICENSE`) because it contains UxPlay code
+(GPL-3.0). The following components come from third parties. Their license files are located next to them.
 
-## Im Repository enthalten
+## Included in the repository
 
-| Bestandteil | Ordner | Herkunft | Lizenz |
+| Component | Folder | Origin | License |
 |---|---|---|---|
-| UxPlay-Protokollbibliothek (`lib/`) | `third_party/uxplay-lib` | <https://github.com/FDH2/UxPlay>, Commit `ec20312` (siehe `UPSTREAM_REV`) | GPL-3.0 (`LICENSE-UxPlay`) |
-| playfair (FairPlay-Handshake) | `third_party/uxplay-lib/playfair` | Teil von UxPlay | GPL-3.0 (`LICENSE.md`) |
-| llhttp (HTTP-Parser) | `third_party/uxplay-lib/llhttp` | Teil von UxPlay, ursprünglich <https://github.com/nodejs/llhttp> | MIT (`LICENSE-MIT`) |
-| mdnsd (mDNS-Responder) | `third_party/uxplay-lib/mdnsd` | Teil von UxPlay, © kgbook | LGPL-2.1 oder neuer (Dateikopf) |
-| libplist 2.7.0 | `third_party/libplist` | <https://github.com/libimobiledevice/libplist> | LGPL-2.1 oder neuer (`COPYING.LESSER`) |
+| UxPlay protocol library (`lib/`) | `third_party/uxplay-lib` | <https://github.com/FDH2/UxPlay>, commit `ec20312` (see `UPSTREAM_REV`) | GPL-3.0 (`LICENSE-UxPlay`) |
+| playfair (FairPlay handshake) | `third_party/uxplay-lib/playfair` | part of UxPlay | GPL-3.0 (`LICENSE.md`) |
+| llhttp (HTTP parser) | `third_party/uxplay-lib/llhttp` | part of UxPlay, originally <https://github.com/nodejs/llhttp> | MIT (`LICENSE-MIT`) |
+| mdnsd (mDNS responder) | `third_party/uxplay-lib/mdnsd` | part of UxPlay, © kgbook | LGPL-2.1 or later (file header) |
+| libplist 2.7.0 | `third_party/libplist` | <https://github.com/libimobiledevice/libplist> | LGPL-2.1 or later (`COPYING.LESSER`) |
 
-**Änderungen gegenüber UxPlay:** Für Windows/UWP angepasste Stellen sind im Quelltext mit „UWP-Anpassung“ markiert
-(u. a. `httpd.c`, `raop_rtp.c`, `raop_ntp.c`, `mdnsd/mdnsd.c`). Dazu kommt die Exportfunktion `raop_hls_export_playlists`
-(`http_handlers.h`, `raop.h`). `third_party/compat` ist eigener Code (POSIX-Ersatz für Windows).
+### Changes to UxPlay
 
-## Beim Bauen per vcpkg geholt (nicht im Repository)
+All changes are marked “UWP adaptation” in the source:
 
-| Bestandteil | Version | Lizenz | Hinweis |
+- `httpd.c`: initialize and destroy `run_mutex` (a Windows `CRITICAL_SECTION` must be initialized).
+- `raop_rtp.c`: signed packet length (`recv` often returns -1 on Windows), skip errors/empty packets, a few diagnostic log lines.
+- `raop_ntp.c`: corrected `recvfrom` call (address length passed as a pointer, not a pointer to a pointer).
+- `mdnsd/mdnsd.c`: `mdnsd_stop` joins the thread before closing the sockets (fixes a crash with `0xC0000008` on suspend).
+- `crypto.c`: read/write the key file through a memory BIO (OpenSSL for UWP has no `FILE*` functions).
+- `compat.c`, `compat.h`: `FormatMessageA` instead of `FormatMessage`; removed the `snprintf` → `_snprintf` macro.
+- `http_handlers.h`: compile fix for `plist_get_data_val` (returns `void`) and the new export function
+  `raop_hls_export_playlists` (declared in `raop.h`).
+
+`third_party/compat` is original code (POSIX replacement for Windows).
+
+## Fetched via vcpkg at build time (not in the repository)
+
+| Component | Version | License | Note |
 |---|---|---|---|
-| FFmpeg (`avcodec`, `avutil`, `swresample`) | 9.0.2 | LGPL-2.1 oder neuer | ohne GPL-Teile gebaut, dynamisch gelinkt (DLLs im Paket) |
-| OpenSSL | 3.6.5 | Apache-2.0 | dynamisch gelinkt |
-| Microsoft C++-Laufzeit (`*_app.dll` aus `Microsoft.VCLibs.140.00`) | 14.0 | Microsoft-Lizenz für verteilbare Dateien | wird von `tools/package.ps1` ins Paket kopiert |
+| FFmpeg (`avcodec`, `avutil`, `swresample`) | 9.0.2 | LGPL-2.1 or later | built without GPL parts, dynamically linked (DLLs in the package) |
+| OpenSSL | 3.6.5 | Apache-2.0 | dynamically linked |
+| Microsoft C++ runtime (`*_app.dll` from `Microsoft.VCLibs.140.00`) | 14.0 | Microsoft license for redistributable files | copied into the package by `tools/package.ps1` |
 
-Die Lizenztexte von FFmpeg und OpenSSL legt vcpkg unter `vcpkg_installed/x64-uwp/share/<paket>/copyright` ab.
+vcpkg places the license texts of FFmpeg and OpenSSL in `vcpkg_installed/x64-uwp/share/<package>/copyright`.
 
-## Marken
+## Trademarks
 
-AirPlay, iPhone, iPad und Mac sind Marken von Apple Inc. Xbox ist eine Marke der Microsoft Corporation. Dieses Projekt ist ein privates
-Hobbyprojekt und steht in keiner Verbindung zu Apple oder Microsoft und wird von ihnen weder unterstützt noch geprüft.
+AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. Xbox is a trademark of Microsoft Corporation. This project is a private
+hobby project and is not affiliated with, endorsed by or reviewed by Apple or Microsoft.

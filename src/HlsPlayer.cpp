@@ -26,6 +26,7 @@
 #include <set>
 #include <thread>
 
+#include "Lang.h"
 #include "Log.h"
 #include "Renderer.h"
 
@@ -46,9 +47,9 @@ namespace app {
 namespace {
 
 constexpr wchar_t kHlsContentType[] = L"application/vnd.apple.mpegurl";
-constexpr double kTicksPerSecond = 10000000.0;  // TimeSpan zaehlt in 100 ns
-// Manche Videoserver (z. B. Seiten, deren Video im iPhone-Browser per AirPlay geteilt wird) liefern nur an
-// Mobil-Browser aus und antworten Windows-Kennungen mit 403. Deshalb meldet sich der Player wie Safari auf dem iPhone.
+constexpr double kTicksPerSecond = 10000000.0;  // TimeSpan counts in 100 ns units
+// Some video servers (e.g. sites whose video is shared via AirPlay from the iPhone browser) only serve mobile
+// browsers and answer Windows user agents with 403. That's why the player identifies itself as Safari on the iPhone.
 constexpr wchar_t kUserAgent[] =
     L"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
     L"Version/26.0 Mobile/15E148 Safari/604.1";
@@ -74,8 +75,8 @@ std::string LocalPath(const std::string& url) {
     return slash == std::string::npos ? "/" : url.substr(slash);
 }
 
-// Der Windows-Player startet sonst mit der niedrigsten Qualitaetsstufe und schaltet nach einigen Sekunden hoch;
-// dieser Wechsel ruckelt kurz. Im Heimnetz lieber direkt mit der besten Stufe bis zu dieser Grenze beginnen.
+// Otherwise the Windows player starts at the lowest quality level and switches up after a few seconds, which
+// stutters briefly. On a home network, start right away with the best level up to this limit.
 constexpr uint32_t kMaxInitialBitrate = 10000000;
 
 std::string Hex(uint32_t v) {
@@ -91,7 +92,7 @@ struct HlsPlayer::Impl {
 
     Renderer& renderer;
 
-    // ---- Befehlsschlange fuer den Worker-Thread (MTA; dort leben MediaPlayer und Quellen) ----
+    // ---- Command queue for the worker thread (MTA; MediaPlayer and sources live there) ----
     std::thread thread;
     std::mutex mutex;
     std::condition_variable cv;
@@ -99,14 +100,14 @@ struct HlsPlayer::Impl {
     bool running = false;
 
     std::atomic<bool> active{false};
-    bool showFrames = false;  // nur unter renderer.Lock()
+    bool showFrames = false;  // only under renderer.Lock()
 
     mutable std::mutex infoMutex;
     Info info;
     std::string lastError;
     uint64_t lastErrorTick = 0;
 
-    // Nur auf dem Worker-Thread
+    // Worker thread only
     MediaPlayer player{nullptr};
     AdaptiveMediaSource adaptive{nullptr};
     float volumeLinear = 1.0f;
@@ -114,7 +115,7 @@ struct HlsPlayer::Impl {
     std::set<std::string> failedProperties;
     uint64_t lastStatusLog = 0;
 
-    // Nur unter renderer.Lock() (Frame-Callback)
+    // Only under renderer.Lock() (frame callback)
     IDirect3DSurface surface{nullptr};
     uint32_t surfaceVersion = 0;
     bool loggedFirstFrame = false;
@@ -154,10 +155,10 @@ struct HlsPlayer::Impl {
                 try {
                     cmd();
                 } catch (hresult_error const& e) {
-                    Fail("Fehler " + Hex(static_cast<uint32_t>(e.code())) + ": " + Narrow(e.message()));
+                    Fail(Tr("Fehler ", "Error ") + Hex(static_cast<uint32_t>(e.code())) + ": " + Narrow(e.message()));
                     StopAfterError();
                 } catch (...) {
-                    Fail("unbekannter Fehler");
+                    Fail(Tr("unbekannter Fehler", "unknown error"));
                     StopAfterError();
                 }
             }
@@ -167,9 +168,9 @@ struct HlsPlayer::Impl {
                 try {
                     Poll();
                 } catch (hresult_error const& e) {
-                    if (pollErrors++ < 3) Log("HLS: Statusabfrage fehlgeschlagen %s", Hex(static_cast<uint32_t>(e.code())).c_str());
+                    if (pollErrors++ < 3) Log("HLS: status query failed %s", Hex(static_cast<uint32_t>(e.code())).c_str());
                 } catch (...) {
-                    if (pollErrors++ < 3) Log("HLS: Statusabfrage fehlgeschlagen");
+                    if (pollErrors++ < 3) Log("HLS: status query failed");
                 }
             }
         }
@@ -180,7 +181,7 @@ struct HlsPlayer::Impl {
         winrt::uninit_apartment();
     }
 
-    // ---- Wiedergabe ----------------------------------------------------------------------------------------------
+    // ---- Playback ------------------------------------------------------------------------------------------------
 
     void ConfigureAdaptive() {
         uint32_t best = 0, lowest = 0;
@@ -190,10 +191,10 @@ struct HlsPlayer::Impl {
         }
         if (!best) best = lowest;
         if (best) adaptive.InitialBitrate(best);
-        Log("HLS: %u Qualitaetsstufen, Start mit %u kbit/s", adaptive.AvailableBitrates().Size(), best / 1000);
+        Log("HLS: %u quality levels, starting at %u kbit/s", adaptive.AvailableBitrates().Size(), best / 1000);
         adaptive.PlaybackBitrateChanged([](AdaptiveMediaSource const&,
                                            AdaptiveMediaSourcePlaybackBitrateChangedEventArgs const& args) {
-            Log("HLS: Qualitaet %u -> %u kbit/s", args.OldValue() / 1000, args.NewValue() / 1000);
+            Log("HLS: quality %u -> %u kbit/s", args.OldValue() / 1000, args.NewValue() / 1000);
         });
     }
 
@@ -201,16 +202,16 @@ struct HlsPlayer::Impl {
         Uri uri(winrt::to_hstring(location));
 
         if (IsLocal(location)) {
-            // Playlists stammen vom iPhone (YouTube & Co.): Master als Stream, Media-Playlists ueber
-            // DownloadRequested. So braucht es keine Loopback-Verbindung (fuer UWP-Apps gesperrt).
+            // Playlists come from the iPhone (YouTube etc.): master as a stream, media playlists via
+            // DownloadRequested. No loopback connection needed (blocked for UWP apps).
             auto master = playlists.find("/master.m3u8");
-            if (master == playlists.end()) throw hresult_error(E_FAIL, L"Master-Playlist fehlt");
+            if (master == playlists.end()) throw hresult_error(E_FAIL, Tr(L"Master-Playlist fehlt", L"Master playlist missing"));
             InMemoryRandomAccessStream stream;
             stream.WriteAsync(MakeBuffer(master->second)).get();
             stream.Seek(0);
             auto result = AdaptiveMediaSource::CreateFromStreamAsync(stream, uri, kHlsContentType).get();
             if (result.Status() != AdaptiveMediaSourceCreationStatus::Success) {
-                throw hresult_error(E_FAIL, L"AdaptiveMediaSource (lokal) Status " +
+                throw hresult_error(E_FAIL, L"AdaptiveMediaSource (local) status " +
                                                 to_hstring(static_cast<int>(result.Status())));
             }
             adaptive = result.MediaSource();
@@ -219,10 +220,10 @@ struct HlsPlayer::Impl {
             adaptive.DownloadRequested([copy](AdaptiveMediaSource const&,
                                               AdaptiveMediaSourceDownloadRequestedEventArgs const& args) {
                 const std::string url = Narrow(args.ResourceUri().RawUri());
-                if (!IsLocal(url)) return;  // Segmente laedt der Player selbst aus dem Netz
+                if (!IsLocal(url)) return;  // the player downloads segments from the network itself
                 auto it = copy->find(LocalPath(url));
                 if (it == copy->end()) {
-                    Log("HLS: angeforderte Playlist fehlt: %s", url.c_str());
+                    Log("HLS: requested playlist missing: %s", url.c_str());
                     return;
                 }
                 args.Result().Buffer(MakeBuffer(it->second));
@@ -244,30 +245,33 @@ struct HlsPlayer::Impl {
             Log("HLS: AdaptiveMediaSource Status %d (HTTP %d, %s)", static_cast<int>(result.Status()), httpStatus,
                 Hex(static_cast<uint32_t>(result.ExtendedError())).c_str());
             if (httpStatus >= 400) {
-                // Direkte Wiedergabe wuerde am selben Server scheitern, nur mit nichtssagender Meldung.
+                // Direct playback would fail at the same server, just with a meaningless message.
                 throw hresult_error(E_ACCESSDENIED,
-                                    L"Der Videoserver lehnt den Abruf ab (HTTP " + to_hstring(httpStatus) +
-                                        L"). Der Link ist vermutlich abgelaufen - Video in der App neu öffnen.");
+                                    Tr(L"Der Videoserver lehnt den Abruf ab (HTTP ",
+                                       L"The video server refused the request (HTTP ") +
+                                        to_hstring(httpStatus) +
+                                        Tr(L"). Der Link ist vermutlich abgelaufen - Video in der App neu öffnen.",
+                                           L"). The link has probably expired - reopen the video in the app."));
             }
-            Log("HLS: versuche direkte Wiedergabe");
+            Log("HLS: trying direct playback");
         }
         return MediaSource::CreateFromUri(uri);
     }
 
     void DoPlay(const std::string& location, double startSeconds, const Playlists& playlists) {
         DoStop();
-        Log("HLS: spiele %s ab %.1f s (%zu Playlists vom Sender)", location.c_str(), startSeconds, playlists.size());
+        Log("HLS: playing %s from %.1f s (%zu playlists from the sender)", location.c_str(), startSeconds, playlists.size());
         {
             std::lock_guard<std::mutex> lock(infoMutex);
             info = Info{};
             lastError.clear();
         }
         active = true;
-        renderer.ResetVideoState();  // Wartebildschirm "Video wird geladen" bis zum ersten Bild
+        renderer.ResetVideoState();  // "loading video" idle screen until the first frame
 
-        // Nicht MediaPlaybackItem(source, startTime) verwenden: das schneidet das Video ab, die Position zaehlt dann ab
-        // dem Startpunkt von 0 und das iPhone bekaeme falsche Positionen gemeldet (Weiterschauen springt zurueck).
-        // Stattdessen normal oeffnen und dann zur Startposition springen.
+        // Don't use MediaPlaybackItem(source, startTime): it trims the video, the position then counts from 0 at the
+        // start point and the iPhone would get wrong positions reported (resuming jumps back).
+        // Instead, open normally and then seek to the start position.
         MediaSource source = CreateSource(location, playlists);
         MediaPlaybackItem item(source);
 
@@ -278,21 +282,21 @@ struct HlsPlayer::Impl {
         player.VideoFrameAvailable([this](MediaPlayer const& sender, auto&&) { OnFrame(sender); });
         player.MediaOpened([startSeconds](MediaPlayer const& sender, auto&&) {
             auto s = sender.PlaybackSession();
-            Log("HLS: Medium geoeffnet (%ux%u, Dauer %.1f s)", s.NaturalVideoWidth(), s.NaturalVideoHeight(),
+            Log("HLS: media opened (%ux%u, duration %.1f s)", s.NaturalVideoWidth(), s.NaturalVideoHeight(),
                 ToSeconds(s.NaturalDuration()));
             if (startSeconds > 0.5 && s.CanSeek()) {
                 s.Position(Seconds(startSeconds));
-                Log("HLS: springe zur Startposition %.1f s", startSeconds);
+                Log("HLS: seeking to start position %.1f s", startSeconds);
             }
         });
         player.MediaFailed([this](MediaPlayer const&, MediaPlayerFailedEventArgs const& args) {
-            Fail("Wiedergabe fehlgeschlagen (Fehler " + std::to_string(static_cast<int>(args.Error())) + ", " +
+            Fail(Tr("Wiedergabe fehlgeschlagen (Fehler ", "Playback failed (error ") + std::to_string(static_cast<int>(args.Error())) + ", " +
                  Hex(static_cast<uint32_t>(args.ExtendedErrorCode())) + "): " + Narrow(args.ErrorMessage()));
         });
-        player.PlaybackSession().BufferingStarted([](auto&&, auto&&) { Log("HLS: puffert ..."); });
-        player.PlaybackSession().BufferingEnded([](auto&&, auto&&) { Log("HLS: Puffern beendet"); });
+        player.PlaybackSession().BufferingStarted([](auto&&, auto&&) { Log("HLS: buffering ..."); });
+        player.PlaybackSession().BufferingEnded([](auto&&, auto&&) { Log("HLS: buffering finished"); });
         player.MediaEnded([this](MediaPlayer const&, auto&&) {
-            Log("HLS: Video zu Ende");
+            Log("HLS: video ended");
             std::lock_guard<std::mutex> lock(infoMutex);
             info.finished = true;
         });
@@ -318,7 +322,7 @@ struct HlsPlayer::Impl {
                 position = ToSeconds(player.PlaybackSession().Position());
             } catch (...) {
             }
-            Log("HLS: Wiedergabe gestoppt bei %.1f s", position);
+            Log("HLS: playback stopped at %.1f s", position);
             try {
                 player.Pause();
                 player.Source(nullptr);
@@ -331,7 +335,7 @@ struct HlsPlayer::Impl {
         active = false;
     }
 
-    // "finished" bleibt gesetzt, damit der Sender beim naechsten /playback-info das Ende erfaehrt.
+    // "finished" stays set so the sender learns about the end on the next /playback-info.
     void StopAfterError() {
         try {
             DoStop();
@@ -350,13 +354,13 @@ struct HlsPlayer::Impl {
         const auto state = s.PlaybackState();
         i.ready = state == MediaPlaybackState::Playing || state == MediaPlaybackState::Paused ||
                   state == MediaPlaybackState::Buffering;
-        // Einzelne Werte koennen je nach Quelle E_NOINTERFACE liefern (z. B. bei HLS); dann gilt ein Ersatzwert,
-        // damit Position und Dauer trotzdem beim Sender ankommen (sonst springt "Weiterschauen" zurueck).
+        // Depending on the source, individual values may return E_NOINTERFACE (e.g. with HLS); then a fallback is used
+        // so that position and duration still reach the sender (otherwise "resume watching" jumps back).
         auto safe = [this](const char* name, auto fn, auto fallback) {
             try {
                 return fn();
             } catch (...) {
-                if (failedProperties.insert(name).second) Log("HLS: %s nicht verfuegbar", name);
+                if (failedProperties.insert(name).second) Log("HLS: %s not available", name);
                 return static_cast<decltype(fn())>(fallback);
             }
         };
@@ -366,7 +370,7 @@ struct HlsPlayer::Impl {
         i.bufferEmpty = state == MediaPlaybackState::Buffering || state == MediaPlaybackState::Opening;
         i.bufferFull = !i.bufferEmpty && safe("BufferingProgress", [&] { return s.BufferingProgress(); }, 1.0) >= 1.0;
         double duration = ToSeconds(safe("NaturalDuration", [&] { return s.NaturalDuration(); }, TimeSpan{}));
-        if (duration < 0 || duration > 1e7) duration = 0;  // Live-Stream: keine feste Laenge
+        if (duration < 0 || duration > 1e7) duration = 0;  // live stream: no fixed length
         i.duration = duration;
         i.position = i.ready ? ToSeconds(safe("Position", [&] { return s.Position(); }, TimeSpan{-10000000})) : -1.0;
         i.seekStart = 0;
@@ -388,11 +392,11 @@ struct HlsPlayer::Impl {
                 i.rate);
         }
         std::lock_guard<std::mutex> lock(infoMutex);
-        i.finished = info.finished;  // kann inzwischen von MediaEnded/MediaFailed gesetzt worden sein
+        i.finished = info.finished;  // may have been set by MediaEnded/MediaFailed meanwhile
         info = i;
     }
 
-    // ---- Bildausgabe (Thread des MediaPlayers) -----------------------------------------------------------------
+    // ---- Frame output (MediaPlayer thread) -----------------------------------------------------------------------
 
     void OnFrame(MediaPlayer const& sender) {
         std::lock_guard<std::recursive_mutex> g(renderer.Lock());
@@ -424,10 +428,10 @@ struct HlsPlayer::Impl {
             renderer.PresentExternal();
             if (!loggedFirstFrame) {
                 loggedFirstFrame = true;
-                Log("HLS: erstes Bild angezeigt (%.0fx%.0f)", vw, vh);
+                Log("HLS: first frame shown (%.0fx%.0f)", vw, vh);
             }
         } catch (hresult_error const& e) {
-            if (copyErrors++ < 5) Log("HLS: Bildkopie fehlgeschlagen %s", Hex(static_cast<uint32_t>(e.code())).c_str());
+            if (copyErrors++ < 5) Log("HLS: frame copy failed %s", Hex(static_cast<uint32_t>(e.code())).c_str());
         }
     }
 };
@@ -457,7 +461,7 @@ void HlsPlayer::Shutdown() {
 
 void HlsPlayer::Play(const std::string& location, double startSeconds, Playlists playlists) {
     Impl& s = *impl_;
-    s.active = true;  // sofort, damit die Anzeige nicht auf "Bereit" zurueckspringt
+    s.active = true;  // immediately, so the display does not jump back to "Ready"
     s.Post([&s, location, startSeconds, p = std::move(playlists)] { s.DoPlay(location, startSeconds, p); });
 }
 

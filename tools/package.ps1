@@ -1,5 +1,5 @@
-# Erzeugt aus dem CMake-Build ein signiertes MSIX-Paket (build\AirPlayXbox.msix) plus Zertifikat (build\AirPlayXboxDev.cer).
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File tools\package.ps1
+# Creates a signed MSIX package (build\AirPlayXbox.msix) plus certificate (build\AirPlayXboxDev.cer) from the CMake build.
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File tools\package.ps1
 $ErrorActionPreference = 'Stop'
 $root   = Split-Path -Parent $PSScriptRoot
 $build  = Join-Path $root 'build'
@@ -9,31 +9,31 @@ $vcpkgBin = Join-Path $root 'vcpkg_installed\x64-uwp\bin'
 $pfx = Join-Path $root 'AirPlayXboxDev.pfx'
 $cer = Join-Path $build 'AirPlayXboxDev.cer'
 $pfxPassword = 'airplay-dev'
-$subject = 'CN=AirPlayXboxDev'   # muss mit Publisher in package\AppxManifest.xml uebereinstimmen
+$subject = 'CN=AirPlayXboxDev'   # must match Publisher in package\AppxManifest.xml
 
-if (-not (Test-Path (Join-Path $build 'AirPlayXbox.exe'))) { throw 'build\AirPlayXbox.exe fehlt - zuerst tools\build.bat ausfuehren.' }
+if (-not (Test-Path (Join-Path $build 'AirPlayXbox.exe'))) { throw 'build\AirPlayXbox.exe is missing - run tools\build.bat first.' }
 
-# --- Layout aufbauen -------------------------------------------------------------------------------------------
+# --- Build the layout ------------------------------------------------------------------------------------------
 if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
 New-Item -ItemType Directory -Path $layout | Out-Null
 Copy-Item (Join-Path $build 'AirPlayXbox.exe') $layout
 Copy-Item (Join-Path $root 'package\AppxManifest.xml') $layout
 Copy-Item (Join-Path $root 'package\Assets') $layout -Recurse
 
-# FFmpeg / OpenSSL (vcpkg, dynamisch gelinkt)
+# FFmpeg / OpenSSL (vcpkg, dynamically linked)
 foreach ($dll in 'avcodec-*.dll','avutil-*.dll','swresample-*.dll','libcrypto-*.dll','libssl-*.dll') {
     Get-ChildItem (Join-Path $vcpkgBin $dll) | ForEach-Object { Copy-Item $_.FullName $layout }
 }
 
-# C++-Laufzeit app-lokal (aus dem installierten Microsoft.VCLibs.140.00-Framework dieses PCs)
+# App-local C++ runtime (from the Microsoft.VCLibs.140.00 framework installed on this PC)
 $vclibs = Get-AppxPackage -Name Microsoft.VCLibs.140.00 | Where-Object { $_.Architecture -eq 'X64' } | Select-Object -First 1
-if (-not $vclibs) { throw 'Microsoft.VCLibs.140.00 (x64) ist auf diesem PC nicht installiert.' }
+if (-not $vclibs) { throw 'Microsoft.VCLibs.140.00 (x64) is not installed on this PC.' }
 Get-ChildItem $vclibs.InstallLocation -Filter '*_app.dll' | ForEach-Object { Copy-Item $_.FullName $layout }
-Write-Host "VCLibs-Laufzeit $($vclibs.Version) app-lokal kopiert"
+Write-Host "VCLibs runtime $($vclibs.Version) copied app-locally"
 
-# --- Zertifikat (einmalig) -------------------------------------------------------------------------------------
+# --- Certificate (once) ----------------------------------------------------------------------------------------
 if (-not (Test-Path $pfx)) {
-    # Direkt per .NET erzeugen: kein Eintrag im Windows-Zertifikatspeicher noetig.
+    # Create it directly via .NET: no entry in the Windows certificate store needed.
     $rsa = [System.Security.Cryptography.RSA]::Create(2048)
     $req = New-Object System.Security.Cryptography.X509Certificates.CertificateRequest(
         (New-Object System.Security.Cryptography.X509Certificates.X500DistinguishedName($subject)),
@@ -45,16 +45,16 @@ if (-not (Test-Path $pfx)) {
     $req.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($eku, $true)))
     $cert = $req.CreateSelfSigned([DateTimeOffset]::UtcNow.AddDays(-1), [DateTimeOffset]::UtcNow.AddYears(5))
     [IO.File]::WriteAllBytes($pfx, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $pfxPassword))
-    Write-Host "Neues Entwicklerzertifikat erzeugt: $pfx"
+    Write-Host "New developer certificate created: $pfx"
 }
 $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfx, $pfxPassword)
 [IO.File]::WriteAllBytes($cer, $pfxCert.Export('Cert'))
 
-# --- Packen und signieren --------------------------------------------------------------------------------------
+# --- Pack and sign ---------------------------------------------------------------------------------------------
 $msix = Join-Path $build 'AirPlayXbox.msix'
 & "$sdkBin\makeappx.exe" pack /d $layout /p $msix /o | Out-Host
-if ($LASTEXITCODE -ne 0) { throw 'makeappx fehlgeschlagen' }
+if ($LASTEXITCODE -ne 0) { throw 'makeappx failed' }
 & "$sdkBin\signtool.exe" sign /fd SHA256 /f $pfx /p $pfxPassword $msix | Out-Host
-if ($LASTEXITCODE -ne 0) { throw 'signtool fehlgeschlagen' }
-Write-Host "Fertig: $msix"
-Write-Host "Zertifikat fuer das Device Portal: $cer"
+if ($LASTEXITCODE -ne 0) { throw 'signtool failed' }
+Write-Host "Done: $msix"
+Write-Host "Certificate for the Device Portal: $cer"

@@ -11,27 +11,27 @@ struct SwrContext;
 
 namespace app {
 
-// AirPlay-Audio (ALAC / AAC-LC / AAC-ELD) -> FFmpeg -> PCM -> XAudio2.
-// Jeder Puffer wird zu "Sender-Zeitstempel + kPlayoutDelayNs" abgespielt: zu spaete Puffer werden verworfen,
-// vor zu fruehen wird Stille eingefuegt. So ueberstehen kurze Netzpausen ohne Aussetzer und der Ton bleibt lippensynchron.
+// AirPlay audio (ALAC / AAC-LC / AAC-ELD) -> FFmpeg -> PCM -> XAudio2.
+// Each buffer is played at "sender timestamp + kPlayoutDelayNs": late buffers are dropped, silence is inserted
+// before early ones. This rides out short network gaps without dropouts and keeps the audio lip-synced.
 class AudioPipeline {
 public:
     AudioPipeline();
     ~AudioPipeline();
 
-    // Muss auf einem COM-initialisierten Thread (UI-Thread) aufgerufen werden.
+    // Must be called on a COM-initialized thread (UI thread).
     bool Init();
     void Shutdown();
 
-    // Neuen Audiostream beginnen. ct: 2 = ALAC, 4 = AAC-LC, 8 = AAC-ELD (AirPlay-Codes).
+    // Start a new audio stream. ct: 2 = ALAC, 4 = AAC-LC, 8 = AAC-ELD (AirPlay codes).
     void StartStream(unsigned char ct);
-    // Ende des Streams: Decoder und Source-Voice freigeben.
+    // End of stream: release decoder and source voice.
     void StopStream();
-    // Gepufferte Daten verwerfen (Seek/Pause beim Sender).
+    // Discard buffered data (seek/pause on the sender).
     void Flush();
-    // Ein (bereits entschluesseltes) Codec-Frame; ptsNs = Sender-Zeitstempel in lokaler Uhr (0 = unbekannt).
+    // One (already decrypted) codec frame; ptsNs = sender timestamp in local clock (0 = unknown).
     void Push(const uint8_t* data, int size, uint64_t ptsNs);
-    // AirPlay-Lautstaerke in dB (-30..0, -144 = stumm).
+    // AirPlay volume in dB (-30..0, -144 = mute).
     void SetVolumeDb(float db);
 
 private:
@@ -59,13 +59,13 @@ private:
     IXAudio2* engine_ = nullptr;
     IXAudio2MasteringVoice* master_ = nullptr;
     IXAudio2SourceVoice* voice_ = nullptr;
-    uint64_t submittedSamples_ = 0;  // seit Erzeugung der Voice uebergebene Samples (inkl. Stille)
+    uint64_t submittedSamples_ = 0;  // samples submitted since the voice was created (incl. silence)
 
     AVCodecContext* codec_ = nullptr;
     SwrContext* swr_ = nullptr;
     unsigned char ct_ = 0;
 
-    // Statistik / Diagnose (pro Stream)
+    // Statistics / diagnostics (per stream)
     uint64_t frames_ = 0;
     int dropped_ = 0;
     int lateDrops_ = 0;

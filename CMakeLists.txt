@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
-set(VCPKG_PREFIX "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-uwp" CACHE PATH "vcpkg-Installationsverzeichnis fuer x64-uwp")
+set(VCPKG_PREFIX "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-uwp" CACHE PATH "vcpkg install directory for x64-uwp")
 list(APPEND CMAKE_PREFIX_PATH "${VCPKG_PREFIX}")
 
 add_compile_options(/utf-8)
@@ -22,7 +22,7 @@ target_include_directories(plist PUBLIC third_party/libplist/include
 target_compile_definitions(plist PUBLIC LIBPLIST_STATIC PRIVATE PACKAGE_VERSION="2.7.0")
 target_compile_options(plist PRIVATE /wd4244 /wd4267 /wd4996 /wd4090)
 
-# ---------------------------------------------------------------- UxPlay-lib (AirPlay-Protokoll)
+# ---------------------------------------------------------------- UxPlay lib (AirPlay protocol)
 find_package(OpenSSL REQUIRED)
 file(GLOB UXPLAY_SRC
     third_party/uxplay-lib/*.c

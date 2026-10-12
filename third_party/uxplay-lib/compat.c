@@ -25,6 +25,7 @@
 /* Windows (winsock2) socket error message text */
 char *wsa_strerror(int errnum) {
     static char message[MAX_SOCKET_ERROR_MESSAGE_LENGTH] = { 0 };
+    /* UWP adaptation: explicit ANSI variant (char buffer), UWP builds default to UNICODE */
     FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
                   0, errnum, 0, message, sizeof(message), 0);
     char *nl = strchr(message, '\n');

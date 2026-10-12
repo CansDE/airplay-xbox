@@ -565,6 +565,7 @@ http_handler_action(raop_conn_t *conn, http_request_t *request, http_response_t 
         fcup_response_data = plist_get_data_ptr(req_params_fcup_response_data_node, &uint_val);
 #else
         char *fcup_response_data = NULL;       
+        /* UWP adaptation: plist_get_data_val returns void; assigning its result does not compile with MSVC */
         plist_get_data_val(req_params_fcup_response_data_node, &fcup_response_data, &uint_val);
 #endif
         fcup_response_datalen = (int) uint_val;
@@ -993,9 +994,9 @@ http_handler_hls(raop_conn_t *conn,  http_request_t *request, http_response_t *r
     }
 }
 
-/* UWP-Anpassung: Der Windows-MediaPlayer holt die Playlists nicht per GET ueber localhost (Loopback ist fuer
-   UWP-Apps gesperrt), sondern bekommt sie direkt aus dem Speicher. Liefert Master- und alle Media-Playlists
-   (mit lokalem Pfad wie bei http_handler_hls) an den Callback; Rueckgabe: Anzahl der Playlists oder -1. */
+/* UWP adaptation: the Windows MediaPlayer does not fetch the playlists via GET over localhost (loopback is blocked
+   for UWP apps) but gets them straight from memory. Passes the master and all media playlists (with the local
+   path as in http_handler_hls) to the callback; returns the number of playlists or -1. */
 int raop_hls_export_playlists(raop_t *raop, raop_hls_playlist_cb_t cb, void *cls) {
     if (raop->current_video < 0 || !raop->airplay_video[raop->current_video]) {
         return -1;

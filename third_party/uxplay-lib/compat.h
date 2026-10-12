@@ -25,6 +25,7 @@
 #include <iphlpapi.h>
 #include <mswsock.h>
 #include <windows.h>
+/* UWP adaptation: removed "#define snprintf _snprintf" - MSVC has a standard snprintf, and the macro breaks std::snprintf */
 #else
 #include <sys/types.h>
 #include <sys/socket.h>

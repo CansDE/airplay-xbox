@@ -1,4 +1,4 @@
-/* Minimaler pthread-Ersatz auf Win32-Basis (UWP-tauglich) fuer die UxPlay-Bibliothek. */
+/* Minimal Win32-based pthread replacement (UWP-compatible) for the UxPlay library. */
 #ifndef COMPAT_PTHREAD_H
 #define COMPAT_PTHREAD_H
 
@@ -81,7 +81,7 @@ static __inline int pthread_cond_init(pthread_cond_t *c, const void *a) { (void)
 static __inline int pthread_cond_signal(pthread_cond_t *c) { WakeConditionVariable(c); return 0; }
 static __inline int pthread_cond_destroy(pthread_cond_t *c) { (void) c; return 0; }
 
-/* abs: absolute CLOCK_REALTIME-Zeit */
+/* abs: absolute CLOCK_REALTIME time */
 static __inline int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, const struct timespec *abs)
 {
     struct timespec now;

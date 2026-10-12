@@ -8,7 +8,8 @@ screen and audio to the Xbox via *Control Center → Screen Mirroring*. Audio-on
 
 **Status: runs on the Xbox Series X (Developer Mode).** Tested with an iPhone; see “Test status” for details.
 
-> **Note:** The app's on-screen text (status screen, error messages) is currently in German only.
+The app's on-screen text (status screen, error messages) follows the system language: German on German systems, English
+everywhere else.
 
 ## Architecture
 
@@ -103,7 +104,7 @@ Important: the iPhone/Mac and the Xbox must be on the **same network/VLAN**, and
 - **Known not to work:** TikTok sends no video request when its AirPlay button is used; only mirroring keeps running.
 - **Not yet tested:** the YouTube path (playlists from the iPhone, `raop_hls_export_playlists`) and the MacBook.
 
-Porting the UxPlay library required fixing four Windows-specific bugs, marked “UWP-Anpassung” (“UWP adaptation”) in the source:
+Porting the UxPlay library required fixing four Windows-specific bugs, marked “UWP adaptation” in the source:
 an uninitialized mutex in `httpd.c`, an `unsigned` packet length in `raop_rtp.c` (`recv` often returns -1 on Windows), a wrong
 `recvfrom` call in `raop_ntp.c`, and `mdnsd_stop` in `mdnsd.c`, which closed sockets while the mDNS thread was still using them.
 UWP checks handles strictly, so this crashed the app with `0xC0000008` when it was suspended (minimized, Xbox Home button).

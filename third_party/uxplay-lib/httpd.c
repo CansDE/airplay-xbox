@@ -196,7 +196,7 @@ httpd_init(logger_t *logger, httpd_callbacks_t *callbacks, int nohold)
     /* Initial status joined */
     httpd->running = 0;
     httpd->joined = 1;
-    MUTEX_CREATE(httpd->run_mutex);  /* UWP-Anpassung: CRITICAL_SECTION muss initialisiert werden (pthread tolerierte Nullen) */
+    MUTEX_CREATE(httpd->run_mutex);  /* UWP adaptation: a CRITICAL_SECTION must be initialized (pthread tolerated zeroed memory) */
 
     return httpd;
 }
@@ -206,7 +206,7 @@ httpd_destroy(httpd_t *httpd)
 {
     if (httpd) {
         httpd_stop(httpd);
-        MUTEX_DESTROY(httpd->run_mutex);
+        MUTEX_DESTROY(httpd->run_mutex);  /* UWP adaptation: counterpart to MUTEX_CREATE in httpd_init */
         free(httpd->connections);
         free(httpd);
     }

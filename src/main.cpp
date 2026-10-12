@@ -1,4 +1,4 @@
-// AirPlay-Empfaenger fuer die Xbox: UWP-App ohne XAML (CoreApplication + D3D11 direkt auf dem CoreWindow).
+// AirPlay receiver for the Xbox: UWP app without XAML (CoreApplication + D3D11 directly on the CoreWindow).
 #include <windows.h>
 
 #include <winrt/Windows.ApplicationModel.Activation.h>
@@ -26,6 +26,7 @@
 #include "AirPlayServer.h"
 #include "AudioPipeline.h"
 #include "HlsPlayer.h"
+#include "Lang.h"
 #include "Log.h"
 #include "Renderer.h"
 #include "VideoPipeline.h"
@@ -38,7 +39,7 @@ using namespace winrt::Windows::UI::Core;
 
 namespace {
 
-// Diagnose: schreibt sehr frueh (noch vor LogInit) Marker in <Package>\AC\Temp\airplay_boot.log
+// Diagnostics: writes markers very early (even before LogInit) to <Package>\AC\Temp\airplay_boot.log
 void Boot(const char* msg) {
     wchar_t path[MAX_PATH];
     DWORD n = GetTempPathW(MAX_PATH, path);
@@ -69,7 +70,7 @@ std::string Narrow(const std::wstring& w) {
     return s;
 }
 
-// Stabile, zufaellige "MAC-Adresse" als AirPlay-Geraete-ID (einmal erzeugt, dann gespeichert).
+// Stable, random "MAC address" used as the AirPlay device ID (generated once, then stored).
 std::string LoadOrCreateDeviceId() {
     auto values = winrt::Windows::Storage::ApplicationData::Current().LocalSettings().Values();
     if (auto stored = values.TryLookup(L"DeviceId")) {
@@ -78,14 +79,14 @@ std::string LoadOrCreateDeviceId() {
     std::random_device rd;
     unsigned char b[6];
     for (auto& x : b) x = static_cast<unsigned char>(rd());
-    b[0] = static_cast<unsigned char>((b[0] & 0xFE) | 0x02);  // lokal verwaltet, Unicast
+    b[0] = static_cast<unsigned char>((b[0] & 0xFE) | 0x02);  // locally administered, unicast
     char buf[32];
     snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", b[0], b[1], b[2], b[3], b[4], b[5]);
     values.Insert(L"DeviceId", box_value(to_hstring(buf)));
     return buf;
 }
 
-// Anzeigename: optional aus LocalFolder\name.txt, sonst "Xbox Series X".
+// Display name: optionally from LocalFolder\name.txt, otherwise "Xbox Series X".
 std::string LoadDeviceName(const std::wstring& folder) {
     FILE* f = _wfopen((folder + L"\\name.txt").c_str(), L"rb");
     if (f) {
@@ -94,7 +95,7 @@ std::string LoadDeviceName(const std::wstring& folder) {
         fclose(f);
         std::string s(buf, n);
         while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ')) s.pop_back();
-        if (s.size() >= 3 && static_cast<unsigned char>(s[0]) == 0xEF) s.erase(0, 3);  // UTF-8-BOM
+        if (s.size() >= 3 && static_cast<unsigned char>(s[0]) == 0xEF) s.erase(0, 3);  // UTF-8 BOM
         if (!s.empty()) return s;
     }
     return "Xbox Series X";
@@ -128,7 +129,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
         });
         resumingToken_ = CoreApplication::Resuming([this](auto&&, auto&&) {
             app::Log("App: Resuming");
-            nextServerTry_ = 0;  // sofort neu starten
+            nextServerTry_ = 0;  // restart right away
         });
     }
 
@@ -158,17 +159,17 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
         localFolder_ = folder.c_str();
         app::LogInit(localFolder_);
         app::InstallCrashDiagnostics();
-        app::Log("==== AirPlay Xbox startet ====");
+        app::Log("==== AirPlay Xbox starting ====");
 
-        Boot("vor Activate");
+        Boot("before Activate");
         window_.Activate();
-        Boot("nach Activate");
+        Boot("after Activate");
 
         renderer_ = std::make_unique<app::Renderer>();
         UINT w, h;
         WindowPixelSize(w, h);
         if (!renderer_->Init(winrt::get_unknown(window_), w, h)) {
-            app::Log("Renderer konnte nicht initialisiert werden - Ende");
+            app::Log("Renderer could not be initialized - exiting");
             return;
         }
         video_ = std::make_unique<app::VideoPipeline>(*renderer_);
@@ -181,7 +182,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
 
         deviceName_ = LoadDeviceName(localFolder_);
         deviceId_ = LoadOrCreateDeviceId();
-        app::Log("Geraet: \"%s\" ID %s", deviceName_.c_str(), deviceId_.c_str());
+        app::Log("Device: \"%s\" ID %s", deviceName_.c_str(), deviceId_.c_str());
 
         displayRequest_ = winrt::Windows::System::Display::DisplayRequest();
         auto dispatcher = window_.Dispatcher();
@@ -202,7 +203,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
                 serverStarted_ = server_->Start(deviceName_, deviceId_, Narrow(localFolder_ + L"\\airplay_key.pem"), err);
                 if (!serverStarted_) {
                     lastError_ = err;
-                    app::Log("Server-Start fehlgeschlagen: %s (neuer Versuch in 5 s)", err.c_str());
+                    app::Log("Server start failed: %s (retrying in 5 s)", err.c_str());
                     server_->Stop();
                     nextServerTry_ = now + 5000;
                 } else {
@@ -214,9 +215,8 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
                 lastIpCheck = now;
             }
 
-            // Solange gespiegelt wird, bleibt das letzte Bild stehen - auch wenn das iPhone bei ruhigem Bildschirm
-            // eine Weile keine neuen Bilder schickt. Der Wartebildschirm kommt erst nach dem Ende der Spiegelung
-            // bzw. des AirPlay-Videos.
+            // While mirroring, the last frame stays on screen - even if the iPhone sends no new frames for a while
+            // because its screen is static. The idle screen only returns once mirroring or the AirPlay video ends.
             const bool streaming = serverStarted_ && (server_->IsMirroring() || hls_->IsActive());
             const uint64_t lastVideo = renderer_->LastVideoTick();
             const bool showingVideo = streaming && lastVideo != 0;
@@ -230,7 +230,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView> {
             }
         }
 
-        app::Log("App: beende");
+        app::Log("App: shutting down");
         CoreApplication::Suspending(suspendingToken_);
         CoreApplication::Resuming(resumingToken_);
         server_->Stop();
@@ -274,24 +274,29 @@ private:
         info.deviceName = Widen(deviceName_);
         info.ip = ip_;
         if (!lastError_.empty()) {
-            info.status = L"Fehler: " + Widen(lastError_);
-            info.hint = L"Der Start wird automatisch wiederholt. Ist die Xbox mit dem Heimnetz verbunden?";
+            info.status = app::Tr(L"Fehler: ", L"Error: ") + Widen(lastError_);
+            info.hint = app::Tr(L"Der Start wird automatisch wiederholt. Ist die Xbox mit dem Heimnetz verbunden?",
+                                L"Retrying automatically. Is the Xbox connected to your home network?");
         } else if (!serverStarted_) {
-            info.status = L"Starte AirPlay ...";
+            info.status = app::Tr(L"Starte AirPlay ...", L"Starting AirPlay ...");
         } else if (hls_->IsActive()) {
-            info.status = L"AirPlay-Video wird geladen ...";
-            info.hint = L"Steuerung über das iPhone (Pause, Spulen, Beenden).";
+            info.status = app::Tr(L"AirPlay-Video wird geladen ...", L"Loading AirPlay video ...");
+            info.hint = app::Tr(L"Steuerung über das iPhone (Pause, Spulen, Beenden).",
+                                L"Control playback from the iPhone (pause, seek, stop).");
         } else if (std::string err = hls_->LastError(15000); !err.empty()) {
-            info.status = L"Video konnte nicht abgespielt werden";
+            info.status = app::Tr(L"Video konnte nicht abgespielt werden", L"The video could not be played");
             info.hint = Widen(err);
         } else if (server_->ConnectionCount() > 0) {
             std::wstring client = Widen(server_->ClientDescription());
-            info.status = client.empty() ? L"Verbunden - warte auf Bild" : L"Verbunden: " + client;
-            info.hint = L"Starte die Bildschirmsynchronisierung oder gib Audio wieder.";
+            info.status = client.empty() ? app::Tr(L"Verbunden - warte auf Bild", L"Connected - waiting for video")
+                                         : app::Tr(L"Verbunden: ", L"Connected: ") + client;
+            info.hint = app::Tr(L"Starte die Bildschirmsynchronisierung oder gib Audio wieder.",
+                                L"Start Screen Mirroring or play audio.");
         } else {
-            info.status = L"Bereit - wartet auf Verbindung";
-            info.hint = L"iPhone/Mac: Kontrollzentrum → Bildschirmsynchronisierung → „" + Widen(deviceName_) +
-                        L"“";
+            info.status = app::Tr(L"Bereit - wartet auf Verbindung", L"Ready - waiting for a connection");
+            info.hint = app::UiGerman()
+                            ? L"iPhone/Mac: Kontrollzentrum → Bildschirmsynchronisierung → „" + Widen(deviceName_) + L"“"
+                            : L"iPhone/Mac: Control Center → Screen Mirroring → \u201C" + Widen(deviceName_) + L"\u201D";
         }
         return info;
     }
@@ -322,6 +327,6 @@ private:
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Boot("wWinMain");
     CoreApplication::Run(make<App>());
-    Boot("Run beendet");
+    Boot("Run finished");
     return 0;
 }
